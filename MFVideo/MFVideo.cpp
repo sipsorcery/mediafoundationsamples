@@ -31,6 +31,7 @@
 
 #define CHECK_HR(hr, msg) if (hr != S_OK) { printf(msg); printf("Error: %.2X.\n", hr); goto done; }
 
+DWORD WINAPI CreateVideoWindow(LPVOID pContext);
 BOOL InitializeWindow(HWND *pHwnd);
 
 // Constants 
@@ -42,7 +43,6 @@ int _tmain(int argc, _TCHAR* argv[])
 	CoInitializeEx(NULL, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE);
 	MFStartup(MF_VERSION);
 
-	HWND hwnd = 0;
 	IMFSourceResolver *pSourceResolver = NULL;
 	IUnknown* uSource = NULL;
 	IMFMediaSource *mediaFileSource = NULL;
@@ -59,10 +59,7 @@ int _tmain(int argc, _TCHAR* argv[])
 	IMFSinkWriter *pSinkWriter = NULL;
 	IMFVideoRenderer *pVideoRenderer = NULL;
 
-	if (!InitializeWindow(&hwnd))
-	{
-		return 0;
-	}
+	HANDLE h = CreateThread(NULL, 0, CreateVideoWindow, NULL, 0L, NULL);
 
 	// Set up the reader for the file.
 	CHECK_HR(MFCreateSourceResolver(&pSourceResolver), "MFCreateSourceResolver failed.\n");
@@ -96,7 +93,7 @@ int _tmain(int argc, _TCHAR* argv[])
 	CHECK_HR(pVideoOutType->SetGUID(MF_MT_SUBTYPE, MFVideoFormat_RGB32), "Failed to set video output audio sub type (RGB32).\n");
 
 	CHECK_HR(pSourceReader->SetCurrentMediaType((DWORD)MF_SOURCE_READER_FIRST_VIDEO_STREAM, NULL, pVideoOutType),
-		"Error setting reader audio output type.\n");
+		"Error setting reader video output type.\n");
 	 
 	// Create EVR sink .
 	CHECK_HR(MFCreateVideoRenderer(__uuidof(IMFMediaSink), (void**)&pVideoSink), "Failed to create video sink.\n");
@@ -160,6 +157,26 @@ done:
 
 	printf("finished.\n");
 	getchar();
+
+	return 0;
+}
+
+DWORD WINAPI CreateVideoWindow(LPVOID pContext)
+{
+	HWND hwnd = 0;
+	MSG msg = { 0 };
+
+	if (!InitializeWindow(&hwnd))
+	{
+		return 0;
+	}
+
+	// Message loop
+	while (GetMessage(&msg, NULL, 0, 0))
+	{
+		TranslateMessage(&msg);
+		DispatchMessage(&msg);
+	}
 
 	return 0;
 }

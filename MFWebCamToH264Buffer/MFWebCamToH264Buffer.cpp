@@ -254,6 +254,8 @@ int _tmain(int argc, _TCHAR* argv[])
 					mftOutSample->Release();
 				}
 			}
+
+			SafeRelease(&videoSample);
 		}
 
 		sampleCount++;

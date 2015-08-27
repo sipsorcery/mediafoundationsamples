@@ -139,7 +139,6 @@ int _tmain(int argc, _TCHAR* argv[])
 	CHECK_HR(pAudioOutType->SetUINT32(MF_MT_AUDIO_SAMPLES_PER_SECOND, 22050), "Failed.\n");
 	CHECK_HR(pAudioOutType->SetUINT32(MF_MT_AUDIO_BLOCK_ALIGNMENT, 8), "Failed.\n");
 	CHECK_HR(pAudioOutType->SetUINT32(MF_MT_AUDIO_AVG_BYTES_PER_SECOND, 176400), "Failed.\n");
-	CHECK_HR(pAudioOutType->SetUINT32(MF_MT_AUDIO_BITS_PER_SAMPLE, 32), "Failed.\n");
 	CHECK_HR(pAudioOutType->SetUINT32(MF_MT_ALL_SAMPLES_INDEPENDENT, TRUE), "Failed.\n");
 
 	CHECK_HR(pSourceReader->SetCurrentMediaType((DWORD)MF_SOURCE_READER_FIRST_AUDIO_STREAM, NULL, pAudioOutType),

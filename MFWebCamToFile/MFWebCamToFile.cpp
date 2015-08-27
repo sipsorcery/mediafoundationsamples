@@ -15,6 +15,7 @@
 #include <mfplay.h>
 #include <mfreadwrite.h>
 #include <wmcodecdsp.h>
+#include "..\Common\MFUtility.h"
 
 #pragma comment(lib, "mf.lib")
 #pragma comment(lib, "mfplat.lib")
@@ -24,7 +25,7 @@
 
 #define CHECK_HR(hr, msg) if (hr != S_OK) { printf(msg); printf("Error: %.2X.\n", hr); goto done; }
 
-HRESULT CopyAttribute(IMFAttributes *pSrc, IMFAttributes *pDest, const GUID& key);
+//HRESULT CopyAttribute(IMFAttributes *pSrc, IMFAttributes *pDest, const GUID& key);
 
 int _tmain(int argc, _TCHAR* argv[])
 {
@@ -105,16 +106,16 @@ int _tmain(int argc, _TCHAR* argv[])
 
 	CHECK_HR(pWriter->SetInputMediaType(writerVideoStreamIndex, videoSourceOutputType, NULL), "Error setting the sink writer video input type.\n");
 
-	getchar();
+	//getchar();
 
 	CHECK_HR(pWriter->BeginWriting(), "Failed to begin writing on the H.264 sink.\n");
 
 	DWORD streamIndex, flags;
-	LONGLONG llVideoTimeStamp, llAudioTimeStamp;
-	IMFSample *videoSample = NULL, *audioSample = NULL;
+	LONGLONG llVideoTimeStamp;
+	IMFSample *videoSample = NULL;
 	CRITICAL_SECTION critsec;
-	BOOL bFirstVideoSample = TRUE, bFirstAudioSample = TRUE;
-	LONGLONG llVideoBaseTime = 0, llAudioBaseTime = 0;
+	BOOL bFirstVideoSample = TRUE;
+	LONGLONG llVideoBaseTime = 0;
 	int sampleCount = 0;
 
 	InitializeCriticalSection(&critsec);
@@ -148,6 +149,8 @@ int _tmain(int argc, _TCHAR* argv[])
 
 			CHECK_HR(videoSample->SetSampleTime(llVideoTimeStamp), "Set video sample time failed.\n");
 			CHECK_HR(pWriter->WriteSample(writerVideoStreamIndex, videoSample), "Write video sample failed.\n");
+
+			SafeRelease(&videoSample);
 		}
 
 		sampleCount++;
@@ -174,19 +177,19 @@ Copies a media type attribute from an input media type to an output media type. 
 up the video sink and where a number of the video sink input attributes need to be duplicated on the
 video writer attributes.
 */
-HRESULT CopyAttribute(IMFAttributes *pSrc, IMFAttributes *pDest, const GUID& key)
-{
-	PROPVARIANT var;
-	PropVariantInit(&var);
-
-	HRESULT hr = S_OK;
-
-	hr = pSrc->GetItem(key, &var);
-	if (SUCCEEDED(hr))
-	{
-		hr = pDest->SetItem(key, var);
-	}
-
-	PropVariantClear(&var);
-	return hr;
-}
+//HRESULT CopyAttribute(IMFAttributes *pSrc, IMFAttributes *pDest, const GUID& key)
+//{
+//	PROPVARIANT var;
+//	PropVariantInit(&var);
+//
+//	HRESULT hr = S_OK;
+//
+//	hr = pSrc->GetItem(key, &var);
+//	if (SUCCEEDED(hr))
+//	{
+//		hr = pDest->SetItem(key, var);
+//	}
+//
+//	PropVariantClear(&var);
+//	return hr;
+//}

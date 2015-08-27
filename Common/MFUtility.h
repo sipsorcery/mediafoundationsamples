@@ -33,6 +33,15 @@ if (Attr == _Attribute) \
 	goto done; \
 } \
 
+template <class T> void SafeRelease(T **ppT)
+{
+	if (*ppT)
+	{
+		(*ppT)->Release();
+		*ppT = NULL;
+	}
+}
+
 LPCSTR STRING_FROM_GUID(GUID Attr)
 {
 	LPCSTR pAttrStr = NULL;

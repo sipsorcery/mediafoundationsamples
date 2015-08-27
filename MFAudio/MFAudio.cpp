@@ -23,12 +23,14 @@
 #include <mmdeviceapi.h>
 #include <Audioclient.h>
 #include <mferror.h>
+#include <Wmcodecdsp.h>
 
 #pragma comment(lib, "mf.lib")
 #pragma comment(lib, "mfplat.lib")
 #pragma comment(lib, "mfplay.lib")
 #pragma comment(lib, "mfreadwrite.lib")
 #pragma comment(lib, "mfuuid.lib")
+#pragma comment(lib, "wmcodecdspuuid")
 
 #define CHECK_HR(hr, msg) if (hr != S_OK) { printf(msg); printf("Error: %.2X.\n", hr); goto done; }
 
@@ -41,7 +43,7 @@ int _tmain(int argc, _TCHAR* argv[])
 	IUnknown* uSource = NULL;
 	IMFMediaSource *mediaFileSource = NULL;
 	IMFSourceReader *pSourceReader = NULL;
-	IMFMediaType *pAudioOutType = NULL;
+	IMFMediaType *pAudioOutType = NULL, *pSinkInputType = NULL;
 	IMFMediaType *pFileAudioMediaType = NULL;
 	MF_OBJECT_TYPE ObjectType = MF_OBJECT_INVALID;
 	IMFMediaSink *pAudioSink = NULL;
@@ -74,7 +76,7 @@ int _tmain(int argc, _TCHAR* argv[])
 	CHECK_HR(MFCreateMediaType(&pAudioOutType), "Failed to create audio output media type.\n");
 	CHECK_HR(pAudioOutType->SetGUID(MF_MT_MAJOR_TYPE, MFMediaType_Audio), "Failed to set audio output media major type.\n");
 	CHECK_HR(pAudioOutType->SetGUID(MF_MT_SUBTYPE, MFAudioFormat_Float), "Failed to set audio output audio sub type (Float).\n");
-
+	
 	CHECK_HR(pSourceReader->SetCurrentMediaType((DWORD)MF_SOURCE_READER_FIRST_AUDIO_STREAM, NULL, pAudioOutType),
 		"Error setting reader audio output type.\n");
 
@@ -92,7 +94,29 @@ int _tmain(int argc, _TCHAR* argv[])
 
 	CHECK_HR(MFCreateSinkWriterFromMediaSink(pAudioSink, NULL, &pSinkWriter), "Failed to create sink writer from audio sink.\n");
 
-	getchar();
+	/*CHECK_HR(MFTRegisterLocalByCLSID(
+		__uuidof(CResamplerMediaObject),
+		MFT_CATEGORY_AUDIO_ENCODER,
+		L"",
+		MFT_ENUM_FLAG_SYNCMFT,
+		0,
+		NULL,
+		0,
+		NULL
+		), "Error registering resampler.\n");
+
+	CHECK_HR(MFCreateMediaType(&pSinkInputType), "Failed to create audio output media type.\n");
+	CHECK_HR(pSinkInputType->SetGUID(MF_MT_MAJOR_TYPE, MFMediaType_Audio), "Failed.\n");
+	CHECK_HR(pSinkInputType->SetGUID(MF_MT_SUBTYPE, MFAudioFormat_Float), "Failed to set audio output audio sub type (Float).\n");
+	CHECK_HR(pSinkInputType->SetUINT32(MF_MT_AUDIO_BITS_PER_SAMPLE, 32), "Failed to set audio output bits per sample (32).\n");
+	CHECK_HR(pSinkInputType->SetUINT32(MF_MT_AUDIO_PREFER_WAVEFORMATEX, TRUE), "Failed.\n");
+	CHECK_HR(pSinkInputType->SetUINT32(MF_MT_AUDIO_NUM_CHANNELS, 2), "Failed.\n");
+	CHECK_HR(pSinkInputType->SetUINT32(MF_MT_AUDIO_SAMPLES_PER_SECOND, 22050), "Failed.\n");
+	CHECK_HR(pSinkInputType->SetUINT32(MF_MT_AUDIO_BLOCK_ALIGNMENT, 8), "Failed.\n");
+	CHECK_HR(pSinkInputType->SetUINT32(MF_MT_AUDIO_AVG_BYTES_PER_SECOND, 176400), "Failed.\n");
+	CHECK_HR(pSinkInputType->SetUINT32(MF_MT_ALL_SAMPLES_INDEPENDENT, TRUE), "Failed.\n");
+
+	CHECK_HR(pSinkWriter->SetInputMediaType(0, pSinkInputType, NULL), "Failed to set input media type on the sink writer.\n");*/
 
 	// Start the read-write loop.
 	printf("Read audio samples from file and write to speaker.\n");
