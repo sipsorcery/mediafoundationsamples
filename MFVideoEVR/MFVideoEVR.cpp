@@ -1,4 +1,4 @@
-/// Filename: MFVideo.cpp
+/// Filename: MFVideoEVR.cpp
 ///
 /// Description:
 /// This file contains a C++ console application that is attempting to play the video stream from a sample MP4 file using the Windows
