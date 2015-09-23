@@ -33,7 +33,8 @@
 #define CHECK_HR(hr, msg) if (hr != S_OK) { printf(msg); printf("Error: %.2X.\n", hr); goto done; }
 
 // Function definitions.
-DWORD InitializeWindow(LPVOID lpThreadParameter);
+//DWORD InitializeWindow(LPVOID lpThreadParameter);
+void InitializeWindow();
 
 // Constants 
 const WCHAR CLASS_NAME[] = L"MFVideo Window Class";
@@ -67,7 +68,7 @@ int main()
 	IMFStreamSink *pOutputSink = NULL;
 	IMFMediaType *pOutputNodeMediaType = NULL;
 
-	//Task::Factory->StartNew(gcnew Action(InitializeWindow));
+	Task::Factory->StartNew(gcnew Action(InitializeWindow));
 
 	// This chews 25% CPU. Need to find out why.
 	/*CreateThread(NULL, 0, (LPTHREAD_START_ROUTINE)InitializeWindow, NULL, 0, NULL);
@@ -117,14 +118,14 @@ int main()
 		{
 			printf("Creating audio renderer for stream index %i.\n", i);
 			CHECK_HR(MFCreateAudioRendererActivate(&pActivate), "Failed to create audio renderer activate object.\n");
-			break;
+			//break;
 		}
 		else if (guidMajorType == MFMediaType_Video)
 		{
-			printf("Ignoring video stream.\n");
-			/*printf("Creating video renderer for stream index %i.\n", i);
+			//printf("Ignoring video stream.\n");
+			printf("Creating video renderer for stream index %i.\n", i);
 			CHECK_HR(MFCreateVideoRendererActivate(_hwnd, &pActivate), "Failed to create video renderer activate object.\n");
-			break;*/
+			break;
 		}
 	}
 
@@ -155,8 +156,8 @@ int main()
 	//CHECK_HR(pOutputNode->QueryInterface(IID_PPV_ARGS(&pHandler)), "Failed to get an out sink from the topology output node.\n");
 	//CHECK_HR(pActivate->QueryInterface(IID_PPV_ARGS(&pOutputNodeMediaType)), "Failed to get the activation object preferred media type.\n");
 
-	/*printf("Press any key to start the session...\n");
-	getchar();*/
+	printf("Press any key to start the session...\n");
+	getchar();
 
 	PropVariantInit(&varStart);
 	CHECK_HR(pSession->Start(&GUID_NULL, &varStart), "Failed to start session.\n");
@@ -176,7 +177,8 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 	return DefWindowProc(hwnd, uMsg, wParam, lParam);
 }
 
-DWORD InitializeWindow(LPVOID lpThreadParameter)
+//DWORD InitializeWindow(LPVOID lpThreadParameter)
+void InitializeWindow()
 {
 	WNDCLASS wc = { 0 };
 
@@ -214,7 +216,5 @@ DWORD InitializeWindow(LPVOID lpThreadParameter)
 			}
 		}
 	}
-
-	return 0;
 }
 

@@ -48,7 +48,6 @@ void InitializeWindow();
 // Constants 
 const WCHAR CLASS_NAME[] = L"MFVideoEVR Window Class";
 const WCHAR WINDOW_NAME[] = L"MFVideoEVR";
-const int WEBCAM_DEVICE_INDEX = 1;
 
 // Globals.
 HWND _hwnd;
@@ -100,7 +99,7 @@ int main()
 		0,
 		NULL
 		), "Error registering colour converter DSP.\n");
-	
+
 	Task::Factory->StartNew(gcnew Action(InitializeWindow));
 
 	Sleep(1000);
@@ -115,7 +114,7 @@ int main()
 	CHECK_HR(MFCreateSourceResolver(&pSourceResolver), "MFCreateSourceResolver failed.\n");
 
 	CHECK_HR(pSourceResolver->CreateObjectFromURL(
-		L"..\\..\\..\\MediaFiles\\big_buck_bunny.mp4",		// URL of the source.
+		L"..\\..\\MediaFiles\\big_buck_bunny.mp4",		// URL of the source.
 		MF_RESOLUTION_MEDIASOURCE,  // Create a source object.
 		NULL,                       // Optional property store.
 		&ObjectType,				// Receives the created object type. 
@@ -190,6 +189,7 @@ int main()
 	CHECK_HR(MFCreatePresentationClock(&pClock), "Failed to create presentation clock.\n");
 	CHECK_HR(MFCreateSystemTimeSource(&pTimeSource), "Failed to create system time source.\n");
 	CHECK_HR(pClock->SetTimeSource(pTimeSource), "Failed to set time source.\n");
+	//CHECK_HR(pClock->Start(0), "Error starting presentation clock.\n");
 	CHECK_HR(pVideoSink->SetPresentationClock(pClock), "Failed to set presentation clock on video sink.\n");
 
 	Console::WriteLine("Press any key to start video sampling...");
@@ -198,8 +198,6 @@ int main()
 	IMFSample *videoSample = NULL;
 	DWORD streamIndex, flags;
 	LONGLONG llTimeStamp;
-	bool isBitmapSaved = false;
-	IMFMediaBuffer *pBuffer = nullptr;
 
 	while (true)
 	{
@@ -220,7 +218,7 @@ int main()
 		if (flags & MF_SOURCE_READERF_STREAMTICK)
 		{
 			printf("Stream tick.\n");
-		} 
+		}
 
 		if (!videoSample)
 		{
@@ -231,7 +229,7 @@ int main()
 			printf("Attempting to write sample to stream sink.\n");
 
 			CHECK_HR(videoSample->SetSampleTime(llTimeStamp), "Error setting the video sample time.\n");
-			//CHECK_HR(videoSample->SetSampleDuration(33), "Error setting the video sample duration.\n");
+			//CHECK_HR(videoSample->SetSampleDuration(41000000), "Error setting the video sample duration.\n");
 
 			CHECK_HR(pStreamSink->ProcessSample(videoSample), "Streamsink process sample failed.\n");
 		}
@@ -249,27 +247,7 @@ done:
 
 LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 {
-	PAINTSTRUCT ps;
-	HDC hdc = 0;
-
-	switch (uMsg)
-	{
-		//HANDLE_MSG(hwnd, WM_CLOSE, OnClose);
-		//HANDLE_MSG(hwnd, WM_KEYDOWN, OnKeyDown);
-		//HANDLE_MSG(hwnd, WM_PAINT, OnPaint);
-		//HANDLE_MSG(hwnd, WM_COMMAND, OnCommand);
-		//HANDLE_MSG(hwnd, WM_SIZE, OnSize);
-
-		case WM_PAINT:
-			hdc = BeginPaint(_hwnd, &ps);
-			EndPaint(_hwnd, &ps);
-			break;
-
-		default:
-			return DefWindowProc(hwnd, uMsg, wParam, lParam);
-	}
-
-	return 0;
+	return DefWindowProc(hwnd, uMsg, wParam, lParam);
 }
 
 void InitializeWindow()
@@ -300,13 +278,19 @@ void InitializeWindow()
 		if (_hwnd)
 		{
 			ShowWindow(_hwnd, SW_SHOWDEFAULT);
+			MSG msg = { 0 };
 
-			MSG Msg = { 0 };
-
-			while (GetMessage(&Msg, _hwnd, 0, 0) > 0)
+			while (true)
 			{
-				TranslateMessage(&Msg);
-				DispatchMessage(&Msg);
+				if (PeekMessage(&msg, NULL, 0, 0, PM_REMOVE))
+				{
+					TranslateMessage(&msg);
+					DispatchMessage(&msg);
+				}
+				else
+				{
+					Sleep(1);
+				}
 			}
 		}
 	}
