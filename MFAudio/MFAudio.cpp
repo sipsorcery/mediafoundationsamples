@@ -76,7 +76,10 @@ int _tmain(int argc, _TCHAR* argv[])
 	CHECK_HR(MFCreateMediaType(&pAudioOutType), "Failed to create audio output media type.\n");
 	CHECK_HR(pAudioOutType->SetGUID(MF_MT_MAJOR_TYPE, MFMediaType_Audio), "Failed to set audio output media major type.\n");
 	CHECK_HR(pAudioOutType->SetGUID(MF_MT_SUBTYPE, MFAudioFormat_Float), "Failed to set audio output audio sub type (Float).\n");
-	
+	CHECK_HR(pAudioOutType->SetUINT32(MF_MT_AUDIO_BLOCK_ALIGNMENT, 8), "Failed to set audio block alignment on reader output audio type.\n");
+	CHECK_HR(pAudioOutType->SetUINT32(MF_MT_AUDIO_NUM_CHANNELS, 2), "Failed to set audio number of channels on reader output audio type.\n");
+	CHECK_HR(pAudioOutType->SetUINT32(MF_MT_AUDIO_AVG_BYTES_PER_SECOND, 176400), "Failed to set audio average bytes per second on reader output audio type.\n");
+
 	CHECK_HR(pSourceReader->SetCurrentMediaType((DWORD)MF_SOURCE_READER_FIRST_AUDIO_STREAM, NULL, pAudioOutType),
 		"Error setting reader audio output type.\n");
 
