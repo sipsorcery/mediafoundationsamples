@@ -98,7 +98,10 @@ LPCSTR STRING_FROM_GUID(GUID Attr)
 	INTERNAL_GUID_TO_STRING(MFVideoFormat_WMV3, 14);                  // WMV3
 	INTERNAL_GUID_TO_STRING(MFVideoFormat_MPG1, 14);                  // MPG1
 	INTERNAL_GUID_TO_STRING(MFVideoFormat_MPG2, 14);                  // MPG2
-	INTERNAL_GUID_TO_STRING(MFVideoFormat_RGB24, 14);					// RGB24
+	INTERNAL_GUID_TO_STRING(MFVideoFormat_RGB24, 14);				  // RGB24
+	INTERNAL_GUID_TO_STRING(MFVideoFormat_RGB32, 14);				  // RGB32
+	INTERNAL_GUID_TO_STRING(MFVideoFormat_H264, 14);				  // H264
+
 
 	// Minor audio type values
 	INTERNAL_GUID_TO_STRING(MFAudioFormat_Base, 14);                  // Base
@@ -117,7 +120,6 @@ LPCSTR STRING_FROM_GUID(GUID Attr)
 	INTERNAL_GUID_TO_STRING(WMMEDIASUBTYPE_I420, 15);                  // I420
 	INTERNAL_GUID_TO_STRING(WMMEDIASUBTYPE_WVC1, 0);
 	INTERNAL_GUID_TO_STRING(WMMEDIASUBTYPE_WMAudioV8, 0);
-	INTERNAL_GUID_TO_STRING(MFImageFormat_RGB32, 0);
 
 	// MP4 Media Subtypes.
 	INTERNAL_GUID_TO_STRING(MF_MT_MPEG4_SAMPLE_DESCRIPTION, 6);
@@ -346,4 +348,39 @@ HRESULT CopyAttribute(IMFAttributes *pSrc, IMFAttributes *pDest, const GUID& key
 
 	PropVariantClear(&var);
 	return hr;
+}
+
+void CreateBitmapFile(LPCWSTR fileName, long width, long height, WORD bitsPerPixel, BYTE * bitmapData, DWORD bitmapDataLength)
+{
+	HANDLE file;
+	BITMAPFILEHEADER fileHeader;
+	BITMAPINFOHEADER fileInfo;
+	DWORD writePosn = 0;
+
+	file = CreateFile(fileName, GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);  //Sets up the new bmp to be written to
+
+	fileHeader.bfType = 19778;                                                                    //Sets our type to BM or bmp
+	fileHeader.bfSize = sizeof(fileHeader.bfOffBits) + sizeof(RGBTRIPLE);                         //Sets the size equal to the size of the header struct
+	fileHeader.bfReserved1 = 0;                                                                    //sets the reserves to 0
+	fileHeader.bfReserved2 = 0;
+	fileHeader.bfOffBits = sizeof(BITMAPFILEHEADER)+sizeof(BITMAPINFOHEADER);                    //Sets offbits equal to the size of file and info header
+	fileInfo.biSize = sizeof(BITMAPINFOHEADER);
+	fileInfo.biWidth = width;
+	fileInfo.biHeight = height;
+	fileInfo.biPlanes = 1;
+	fileInfo.biBitCount = bitsPerPixel;
+	fileInfo.biCompression = BI_RGB;
+	fileInfo.biSizeImage = width * height * (bitsPerPixel / 8);
+	fileInfo.biXPelsPerMeter = 2400;
+	fileInfo.biYPelsPerMeter = 2400;
+	fileInfo.biClrImportant = 0;
+	fileInfo.biClrUsed = 0;
+
+	WriteFile(file, &fileHeader, sizeof(fileHeader), &writePosn, NULL);
+
+	WriteFile(file, &fileInfo, sizeof(fileInfo), &writePosn, NULL);
+
+	WriteFile(file, bitmapData, bitmapDataLength, &writePosn, NULL);
+
+	CloseHandle(file);
 }

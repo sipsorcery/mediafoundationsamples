@@ -14,18 +14,14 @@
 ///
 /// History:
 /// 01 Jan 2015	Aaron Clauson (aaron@sipsorcery.com)	Created.
+/// 17 Sep 2015 Aaron Clauson (aaron@sipsorcery.com)	Added the video playback option in addition to the audio one. Can only get one at a time working so far.
 ///
 /// License: Public
 
 #include <stdio.h>
-#include <tchar.h>
-#include <SDKDDKVer.h>
-
 #include <mfapi.h>
 #include <mfplay.h>
 #include <mfreadwrite.h>
-#include <mmdeviceapi.h>
-#include <Audioclient.h>
 
 #pragma comment(lib, "mf.lib")
 #pragma comment(lib, "mfplat.lib")
@@ -33,9 +29,23 @@
 #pragma comment(lib, "mfreadwrite.lib")
 #pragma comment(lib, "mfuuid.lib")
 
+// Macros
 #define CHECK_HR(hr, msg) if (hr != S_OK) { printf(msg); printf("Error: %.2X.\n", hr); goto done; }
 
-int _tmain(int argc, _TCHAR* argv[])
+// Function definitions.
+DWORD InitializeWindow(LPVOID lpThreadParameter);
+
+// Constants 
+const WCHAR CLASS_NAME[] = L"MFVideo Window Class";
+const WCHAR WINDOW_NAME[] = L"MFVideo";
+
+// Globals.
+HWND _hwnd;
+
+using namespace System;
+using namespace System::Threading::Tasks;
+
+int main()
 {
 	CoInitializeEx(NULL, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE);
 	MFStartup(MF_VERSION);
@@ -56,6 +66,19 @@ int _tmain(int argc, _TCHAR* argv[])
 	DWORD sourceStreamCount = 0;
 	IMFStreamSink *pOutputSink = NULL;
 	IMFMediaType *pOutputNodeMediaType = NULL;
+
+	//Task::Factory->StartNew(gcnew Action(InitializeWindow));
+
+	// This chews 25% CPU. Need to find out why.
+	/*CreateThread(NULL, 0, (LPTHREAD_START_ROUTINE)InitializeWindow, NULL, 0, NULL);
+
+	Sleep(1000);
+
+	if (_hwnd == nullptr)
+	{
+		printf("Failed to initialise video window.\n");
+		goto done;
+	}*/
 
 	CHECK_HR(MFCreateSourceResolver(&pSourceResolver), "Failed to create source resolved.\n");
 
@@ -99,6 +122,9 @@ int _tmain(int argc, _TCHAR* argv[])
 		else if (guidMajorType == MFMediaType_Video)
 		{
 			printf("Ignoring video stream.\n");
+			/*printf("Creating video renderer for stream index %i.\n", i);
+			CHECK_HR(MFCreateVideoRendererActivate(_hwnd, &pActivate), "Failed to create video renderer activate object.\n");
+			break;*/
 		}
 	}
 
@@ -139,6 +165,55 @@ done:
 
 	printf("finished.\n");
 	getchar();
+
+	return 0;
+}
+
+// Window creation and processing functions for video rendering.
+
+LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
+{
+	return DefWindowProc(hwnd, uMsg, wParam, lParam);
+}
+
+DWORD InitializeWindow(LPVOID lpThreadParameter)
+{
+	WNDCLASS wc = { 0 };
+
+	wc.lpfnWndProc = WindowProc;
+	wc.hInstance = GetModuleHandle(NULL);
+	wc.hCursor = LoadCursor(NULL, IDC_ARROW);
+	wc.lpszClassName = CLASS_NAME;
+
+	if (RegisterClass(&wc))
+	{
+		_hwnd = CreateWindow(
+			CLASS_NAME,
+			WINDOW_NAME,
+			WS_OVERLAPPEDWINDOW,
+			CW_USEDEFAULT,
+			CW_USEDEFAULT,
+			640,
+			480,
+			NULL,
+			NULL,
+			GetModuleHandle(NULL),
+			NULL
+			);
+
+		if (_hwnd)
+		{
+			ShowWindow(_hwnd, SW_SHOWDEFAULT);
+
+			MSG Msg = { 0 };
+
+			while (GetMessage(&Msg, _hwnd, 0, 0) > 0)
+			{
+				TranslateMessage(&Msg);
+				DispatchMessage(&Msg);
+			}
+		}
+	}
 
 	return 0;
 }
