@@ -1,0 +1,18 @@
+﻿<Page
+    x:Class="WpfMedia.MainPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="using:WpfMedia"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d" Width="1024" Height="768">
+
+    <Grid Background="{ThemeResource ApplicationPageBackgroundThemeBrush}" HorizontalAlignment="Left" VerticalAlignment="Top" Height="768" Width="1024" MinWidth="1024" MinHeight="768">
+        <Border BorderBrush="Black" BorderThickness="2" Margin="0,10,0,0" CornerRadius="2" HorizontalAlignment="Center" Width="640" Height="360" VerticalAlignment="Top" MinWidth="640" MinHeight="360">
+            <MediaElement x:Name="_remoteVideo" Margin="0" RealTimePlayback="True" MinWidth="640" MinHeight="360"/>
+        </Border>
+        <Border BorderBrush="#FF0B48CB" BorderThickness="2" Margin="0,375,0,0" CornerRadius="2" Height="360" VerticalAlignment="Top" HorizontalAlignment="Center" Width="640" MinWidth="640" MinHeight="360">
+            <CaptureElement x:Name="_localCamera" Margin="0"/>
+        </Border>
+    </Grid>
+</Page>

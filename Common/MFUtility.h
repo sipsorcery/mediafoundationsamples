@@ -42,6 +42,15 @@ template <class T> void SafeRelease(T **ppT)
 	}
 }
 
+template <class T> inline void SafeRelease(T*& pT)
+{
+	if (pT != NULL)
+	{
+		pT->Release();
+		pT = NULL;
+	}
+}
+
 LPCSTR STRING_FROM_GUID(GUID Attr)
 {
 	LPCSTR pAttrStr = NULL;

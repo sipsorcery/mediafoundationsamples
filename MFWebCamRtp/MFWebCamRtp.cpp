@@ -56,7 +56,7 @@ private:
 	static const int CAMERA_RESOLUTION_HEIGHT = 480; // 600; //  1024;
 	static const int TARGET_FRAME_RATE = 30;// 5; 15; 30	// Note that this if the video device does not support this frame rate the video source reader will fail to initialise.
 	static const int TARGET_AVERAGE_BIT_RATE = 1000000; // Adjusting this affects the quality of the H264 bit stream.
-	static const int WEBCAM_DEVICE_INDEX = 1;	// <--- Set to 0 to use default system webcam.
+	static const int WEBCAM_DEVICE_INDEX = 0;	// <--- Set to 0 to use default system webcam.
 
 	bool _isInitialised = false;
 	EventTriggerId eventTriggerId = 0;
@@ -104,6 +104,17 @@ public:
 		IMFActivate **videoDevices = NULL;
 		WCHAR *webcamFriendlyName;
 		
+		CHECK_HR(MFTRegisterLocalByCLSID(
+			__uuidof(CColorConvertDMO),
+			MFT_CATEGORY_VIDEO_PROCESSOR,
+			L"",
+			MFT_ENUM_FLAG_SYNCMFT,
+			0,
+			NULL,
+			0,
+			NULL
+			), "Error registering colour converter DSP.\n");
+
 		// Get the first available webcam.
 		CHECK_HR(MFCreateAttributes(&videoConfig, 1), "Error creating video configuation.\n");
 
@@ -128,17 +139,17 @@ public:
 
 		//ListModes(_videoReader);
 
-		/*CHECK_HR(_videoReader->GetCurrentMediaType(
+		CHECK_HR(_videoReader->GetCurrentMediaType(
 			(DWORD)MF_SOURCE_READER_FIRST_VIDEO_STREAM,
 			&videoSourceOutputType), "Error retrieving current media type from first video stream.\n");
 
-		Console::WriteLine(GetMediaTypeDescription(videoSourceOutputType));*/
+		Console::WriteLine(GetMediaTypeDescription(videoSourceOutputType));
 
 		// Note the webcam needs to support this media type. The list of media types supported can be obtained using the ListTypes function in MFUtility.h.
 		MFCreateMediaType(&pSrcOutMediaType);
 		pSrcOutMediaType->SetGUID(MF_MT_MAJOR_TYPE, MFMediaType_Video);
-		pSrcOutMediaType->SetGUID(MF_MT_SUBTYPE, WMMEDIASUBTYPE_I420);
-		//pSrcOutMediaType->SetGUID(MF_MT_SUBTYPE, MFVideoFormat_RGB24);
+		//pSrcOutMediaType->SetGUID(MF_MT_SUBTYPE, WMMEDIASUBTYPE_I420);
+		pSrcOutMediaType->SetGUID(MF_MT_SUBTYPE, MFVideoFormat_RGB24);
 		MFSetAttributeSize(pSrcOutMediaType, MF_MT_FRAME_SIZE, CAMERA_RESOLUTION_WIDTH, CAMERA_RESOLUTION_HEIGHT);
 		CHECK_HR(MFSetAttributeRatio(pSrcOutMediaType, MF_MT_FRAME_RATE, TARGET_FRAME_RATE, 1), "Failed to set frame rate on video device out type.\n");
 
@@ -190,17 +201,6 @@ public:
 		CHECK_HR(_pTransform->ProcessMessage(MFT_MESSAGE_COMMAND_FLUSH, NULL), "Failed to process FLUSH command on H.264 MFT.\n");
 		CHECK_HR(_pTransform->ProcessMessage(MFT_MESSAGE_NOTIFY_BEGIN_STREAMING, NULL), "Failed to process BEGIN_STREAMING command on H.264 MFT.\n");
 		CHECK_HR(_pTransform->ProcessMessage(MFT_MESSAGE_NOTIFY_START_OF_STREAM, NULL), "Failed to process START_OF_STREAM command on H.264 MFT.\n");
-
-		CHECK_HR(MFTRegisterLocalByCLSID(
-			__uuidof(CColorConvertDMO),
-			MFT_CATEGORY_VIDEO_PROCESSOR,
-			L"",
-			MFT_ENUM_FLAG_SYNCMFT,
-			0,
-			NULL,
-			0,
-			NULL
-			), "Error registering colour converter DSP.\n");
 
 		memset(&_outputDataBuffer, 0, sizeof _outputDataBuffer);
 
