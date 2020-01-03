@@ -2,8 +2,7 @@
 A  set of minimal sample apps that demonstrate how to use certain parts of Microsoft's Windows Media Foundation API.
 
  - MFAudio - Working. Play audio from file on speaker.
- - MFAudioMFT - Not working. Play transformed audio on speaker.
- - MFCaptureRawFramesToFile - Not working.
+ - MFCaptureRawFramesToFile - Working. Captures 100 samples from default webcam to file.
  - MFH264RoundTrip - Not working.
  - MFListTransforms - Not working.
  - MFMP4ToYUVWithMFT
