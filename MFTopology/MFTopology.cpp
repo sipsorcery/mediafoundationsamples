@@ -84,8 +84,7 @@ int main()
 	CHECK_HR(MFCreateSourceResolver(&pSourceResolver), "Failed to create source resolved.\n");
 
 	CHECK_HR(pSourceResolver->CreateObjectFromURL(
-		//L"..\\..\\MediaFiles\\big_buck_bunny.mp4",       // URL of the source.
-    L"max_intro.mp4",       // URL of the source.
+		L"../MediaFiles/big_buck_bunny.mp4",       // URL of the source.
     MF_RESOLUTION_MEDIASOURCE,  // Create a source object.
 		NULL,                       // Optional property store.
 		&ObjectType,				// Receives the created object type. 
@@ -158,7 +157,7 @@ int main()
 	//CHECK_HR(pActivate->QueryInterface(IID_PPV_ARGS(&pOutputNodeMediaType)), "Failed to get the activation object preferred media type.\n");
 
 	printf("Press any key to start the session...\n");
-	getchar();
+	auto c = getchar();
 
 	PropVariantInit(&varStart);
 	CHECK_HR(pSession->Start(&GUID_NULL, &varStart), "Failed to start session.\n");
@@ -166,7 +165,7 @@ int main()
 done:
 
 	printf("finished.\n");
-	getchar();
+	c = getchar();
 
 	return 0;
 }
