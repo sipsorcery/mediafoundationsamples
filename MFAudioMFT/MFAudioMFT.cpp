@@ -26,6 +26,7 @@
 #include <mmdeviceapi.h>
 #include <Audioclient.h>
 #include <mferror.h>
+#include <winerror.h>
 #include <Wmcodecdsp.h>
 
 #pragma comment(lib, "mf.lib")
@@ -39,7 +40,7 @@
 
 int _tmain(int argc, _TCHAR* argv[])
 {
-	CoInitializeEx(NULL, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE);
+  CHECK_HR(CoInitializeEx(NULL, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE), "Failed ot initialise COM.");
 	MFStartup(MF_VERSION);
 
 	IMFSourceResolver *pSourceResolver = NULL;
@@ -70,15 +71,21 @@ int _tmain(int argc, _TCHAR* argv[])
 	// Set up the reader for the file.
 	CHECK_HR(MFCreateSourceResolver(&pSourceResolver), "MFCreateSourceResolver failed.\n");
 
-	CHECK_HR(pSourceResolver->CreateObjectFromURL(
+	HRESULT hr = pSourceResolver->CreateObjectFromURL(
 		//L"big_buck_bunny_48k.mp4",      // URL of the source.
-		L"..\\..\\MediaFiles\\big_buck_bunny.mp4",      // URL of the source.
+		//L"..\\..\\MediaFiles\\big_buck_bunny.mp4",      // URL of the source.
 		//L"max4.mp4",
+    L"C:\\Dev\\sipsorcery\\mediafoundationsamples\\MediaFiles\\big_buck_bunny_48k.mp4",
 		MF_RESOLUTION_MEDIASOURCE,  // Create a source object.
 		NULL,                       // Optional property store.
 		&ObjectType,                // Receives the created object type. 
 		&uSource                    // Receives a pointer to the media source.
-		), "Failed to create media source resolver for file.\n");
+		);
+  if(FAILED(hr))
+  {
+    printf("CreateObjectFromURL failed.\n");
+    //goto done;
+  }
 
 	CHECK_HR(uSource->QueryInterface(IID_PPV_ARGS(&mediaFileSource)),
 		"Failed to create media file source.\n");
@@ -185,7 +192,8 @@ int _tmain(int argc, _TCHAR* argv[])
 	// Set the media type propeties that the MFT needs to change.
 	pMFTOutputMediaType->SetUINT32(MF_MT_AUDIO_SAMPLES_PER_SECOND, 48000);	// Speaker value: 48000.
 	pMFTOutputMediaType->SetUINT32(MF_MT_AUDIO_AVG_BYTES_PER_SECOND, 384000); // Speaker value: 384000
-	pMFTOutputMediaType->SetUINT32(MF_MT_AUDIO_CHANNEL_MASK, 3);	// Speaker value: 3
+	//pMFTOutputMediaType->SetUINT32(MF_MT_AUDIO_CHANNEL_MASK, 3);	// Speaker value: 3
+  pMFTOutputMediaType->SetUINT32(MF_MT_AUDIO_CHANNEL_MASK, 0);	// Speaker value: 3
 
 	CHECK_HR(pTransform->SetOutputType(0, pMFTOutputMediaType, 0), "Failed to set output media type on resampler MFT.\n");
 

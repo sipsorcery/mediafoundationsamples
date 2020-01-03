@@ -18,7 +18,8 @@
 #include <wmcodecdsp.h>
 #include <wmsdkidl.h>
 
-using namespace System;
+#include <iostream>
+#include <string>
 
 #define CHECK_HR(hr, msg) if (hr != S_OK) { printf(msg); printf("Error: %.2X.\n", hr); goto done; }
 
@@ -33,7 +34,7 @@ if (Attr == _Attribute) \
 	goto done; \
 } \
 
-template <class T> void SafeRelease(T **ppT)
+template <class T> void SAFE_RELEASE(T **ppT)
 {
 	if (*ppT)
 	{
@@ -42,7 +43,7 @@ template <class T> void SafeRelease(T **ppT)
 	}
 }
 
-template <class T> inline void SafeRelease(T*& pT)
+template <class T> inline void SAFE_RELEASE(T*& pT)
 {
 	if (pT != NULL)
 	{
@@ -139,13 +140,13 @@ done:
 	return pAttrStr;
 }
 
-String^ GetMediaTypeDescription(IMFMediaType * pMediaType)
+std::string GetMediaTypeDescription(IMFMediaType * pMediaType)
 {
 	HRESULT hr = S_OK;
 	GUID MajorType;
 	UINT32 cAttrCount;
 	LPCSTR pszGuidStr;
-	String^ description;
+	std::string description;
 	WCHAR TempBuf[200];
 
 	if (pMediaType == NULL)
@@ -160,7 +161,7 @@ String^ GetMediaTypeDescription(IMFMediaType * pMediaType)
 	pszGuidStr = STRING_FROM_GUID(MajorType);
 	if (pszGuidStr != NULL)
 	{
-		description += gcnew String(pszGuidStr);
+		description += pszGuidStr;
 		description += ": ";
 	}
 	else
@@ -185,13 +186,13 @@ String^ GetMediaTypeDescription(IMFMediaType * pMediaType)
 		pszGuidStr = STRING_FROM_GUID(guidId);
 		if (pszGuidStr != NULL)
 		{
-			description += gcnew String(pszGuidStr);
+			description += pszGuidStr;
 		}
 		else
 		{
 			LPOLESTR guidStr = NULL;
 			StringFromCLSID(guidId, &guidStr);
-			description += gcnew String(guidStr);
+			//description += guidStr;
 
 			CoTaskMemFree(guidStr);
 		}
@@ -206,7 +207,7 @@ String^ GetMediaTypeDescription(IMFMediaType * pMediaType)
 									hr = pMediaType->GetUINT32(guidId, &Val);
 									CHECKHR_GOTO(hr, done);
 
-									description += String::Format("{0}", Val);
+									description += std::to_string(Val);
 									break;
 		}
 		case MF_ATTRIBUTE_UINT64:
@@ -218,17 +219,17 @@ String^ GetMediaTypeDescription(IMFMediaType * pMediaType)
 									if (guidId == MF_MT_FRAME_SIZE)
 									{
 										//tempStr.Format("W %u, H: %u", HI32(Val), LO32(Val));
-										description += String::Format("W:{0} H:{1}", HI32(Val), LO32(Val));
+										//description += String::Format("W:{0} H:{1}", HI32(Val), LO32(Val));
 									}
 									else if ((guidId == MF_MT_FRAME_RATE) || (guidId == MF_MT_PIXEL_ASPECT_RATIO))
 									{
 										//tempStr.Format("W %u, H: %u", HI32(Val), LO32(Val));
-										description += String::Format("W:{0} H:{1}", HI32(Val), LO32(Val));
+										//description += String::Format("W:{0} H:{1}", HI32(Val), LO32(Val));
 									}
 									else
 									{
 										//tempStr.Format("%ld", Val);
-										description += String::Format("{0}", Val);
+										description += std::to_string(Val);
 									}
 
 									//description += tempStr;
@@ -242,7 +243,7 @@ String^ GetMediaTypeDescription(IMFMediaType * pMediaType)
 									CHECKHR_GOTO(hr, done);
 
 									//tempStr.Format("%f", Val);
-									description += String::Format("{0}", Val);
+									description += std::to_string(Val);
 									break;
 		}
 		case MF_ATTRIBUTE_GUID:
@@ -256,13 +257,13 @@ String^ GetMediaTypeDescription(IMFMediaType * pMediaType)
 								  pValStr = STRING_FROM_GUID(Val);
 								  if (pValStr != NULL)
 								  {
-									  description += gcnew String(pValStr);
+									  description += pValStr;
 								  }
 								  else
 								  {
 									  LPOLESTR guidStr = NULL;
 									  StringFromCLSID(Val, &guidStr);
-									  description += gcnew String(guidStr);
+									  //description += guidStr;
 
 									  CoTaskMemFree(guidStr);
 								  }
@@ -280,7 +281,7 @@ String^ GetMediaTypeDescription(IMFMediaType * pMediaType)
 									CHECKHR_GOTO(hr, done);
 
 									//description += CW2A(TempBuf);
-									description += gcnew String(TempBuf);
+									//description +=TempBuf;
 
 									break;
 		}
@@ -329,7 +330,7 @@ void ListModes(IMFSourceReader *pReader)
 		else if (SUCCEEDED(hr))
 		{
 			// Examine the media type. (Not shown.)
-			Console::WriteLine(GetMediaTypeDescription(pType));
+			std::cout << GetMediaTypeDescription(pType) << std::endl;
 
 			pType->Release();
 		}

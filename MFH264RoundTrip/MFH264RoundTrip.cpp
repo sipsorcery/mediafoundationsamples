@@ -35,7 +35,7 @@
 
 int _tmain(int argc, _TCHAR* argv[])
 {
-	const int WEBCAM_DEVICE_INDEX = 1;	// <--- Set to 0 to use default system webcam.
+	const int WEBCAM_DEVICE_INDEX = 0;	// <--- Set to 0 to use default system webcam.
 	const int SAMPLE_COUNT = 50;
 
 	std::ofstream outputBuffer("rawframes.yuv", std::ios::out | std::ios::binary);

@@ -26,3 +26,14 @@
 *.exe
 *.out
 *.app
+
+**/.vs
+**/x64
+**/Debug
+**/bin
+**/obj
+**/*.user
+MFWebCamToFile/sample.mp4
+MFMP4ToYUVWithMFT/rawframes.yuv
+MFCaptureRawFramesToFile/rawframes.yuv
+MFH264RoundTrip/rawframes.yuv

@@ -84,8 +84,9 @@ int main()
 	CHECK_HR(MFCreateSourceResolver(&pSourceResolver), "Failed to create source resolved.\n");
 
 	CHECK_HR(pSourceResolver->CreateObjectFromURL(
-		L"..\\..\\MediaFiles\\big_buck_bunny.mp4",       // URL of the source.
-		MF_RESOLUTION_MEDIASOURCE,  // Create a source object.
+		//L"..\\..\\MediaFiles\\big_buck_bunny.mp4",       // URL of the source.
+    L"max_intro.mp4",       // URL of the source.
+    MF_RESOLUTION_MEDIASOURCE,  // Create a source object.
 		NULL,                       // Optional property store.
 		&ObjectType,				// Receives the created object type. 
 		&uSource					// Receives a pointer to the media source.

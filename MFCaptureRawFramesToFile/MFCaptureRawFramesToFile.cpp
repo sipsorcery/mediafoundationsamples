@@ -42,7 +42,7 @@ using namespace System::Runtime::InteropServices;
 
 int main(array<System::String ^> ^args)
 {
-	const int WEBCAM_DEVICE_INDEX = 1;	// <--- Set to 0 to use default system webcam.
+	const int WEBCAM_DEVICE_INDEX = 0;	// <--- Set to 0 to use default system webcam.
 	const int SAMPLE_COUNT = 100;
 
 	std::ofstream outputBuffer("rawframes.yuv", std::ios::out | std::ios::binary);
