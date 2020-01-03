@@ -1,19 +1,19 @@
 /******************************************************************************
-Filename: MFAudio.cpp
-
-Description:
- This file contains a C++ console application that plays the audio stream from a sample file using the Windows
- Media Foundation API. Specifically it's attempting to use the Streaming Audio Renderer 
- (https://msdn.microsoft.com/en-us/library/windows/desktop/aa369729%28v=vs.85%29.aspx).
-
-Author:
-Aaron Clauson (aaron@sipsorcery.com)
-
-History:
-01 Jan 2015	  Aaron Clauson	  Created, Hobart, Australia.
-03 Jan 2019   Aaron Clauson   Revisited to get sample working.
-
-License: Public
+* Filename: MFAudio.cpp
+* 
+* Description:
+* This file contains a C++ console application that plays the audio stream from a sample file using the Windows
+* Media Foundation API. Specifically it's attempting to use the Streaming Audio Renderer 
+* (https://msdn.microsoft.com/en-us/library/windows/desktop/aa369729%28v=vs.85%29.aspx).
+*
+* Author:
+* Aaron Clauson (aaron@sipsorcery.com)
+*
+* History:
+* 01 Jan 2015	  Aaron Clauson	  Created, Hobart, Australia.
+* 03 Jan 2019   Aaron Clauson   Revisited to get sample working.
+*
+* License: Public Domain (no warranty, use at own risk)
 /******************************************************************************/
 
 #include "../Common/MFUtility.h"
