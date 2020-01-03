@@ -20,8 +20,6 @@
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="MFAudio.cpp" />
-    <ClCompile Include="test.cpp" />
-    <ClCompile Include="test2.cpp" />
   </ItemGroup>
   <PropertyGroup Label="Globals">
     <ProjectGuid>{B2C108DF-7550-4D54-8288-71C19CDF2090}</ProjectGuid>

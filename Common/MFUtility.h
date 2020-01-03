@@ -1,13 +1,19 @@
-/// Filename: MFUtility.h
-///
-/// Description:
-/// This header file contains common macros and functions that are used in the Media Foundation
-/// sample applications.
-///
-/// History:
-/// 07 Mar 2015	Aaron Clauson (aaron@sipsorcery.com)	Created.
-///
-/// License: Public
+/******************************************************************************
+* Filename: MFUtility.h
+*
+* Description:
+* This header file contains common macros and functions that are used in the Media Foundation
+* sample applications.
+*
+* Author:
+* Aaron Clauson (aaron@sipsorcery.com)
+*
+* History:
+* 07 Mar 2015	  Aaron Clauson	  Created, Hobart, Australia.
+* 03 Jan 2019   Aaron Clauson   Removed managed C++ references.
+*
+* License: Public Domain (no warranty, use at own risk)
+/******************************************************************************/
 
 #include <stdio.h>
 #include <tchar.h>
@@ -18,7 +24,9 @@
 #include <wmcodecdsp.h>
 #include <wmsdkidl.h>
 
+#include <codecvt>
 #include <iostream>
+#include <locale>
 #include <string>
 
 #define CHECK_HR(hr, msg) if (hr != S_OK) { printf(msg); printf("Error: %.2X.\n", hr); goto done; }
@@ -52,6 +60,12 @@ template <class T> inline void SAFE_RELEASE(T*& pT)
 	}
 }
 
+/**
+* Helper function to get a user friendly description for a Media Foundation 
+* related GUID.
+* @param[in] Attr: the GUID to get a description for.
+* @@Returns If the GUID is recognised a user friendly string otherwise NULL.
+*/
 LPCSTR STRING_FROM_GUID(GUID Attr)
 {
 	LPCSTR pAttrStr = NULL;
@@ -82,7 +96,7 @@ LPCSTR STRING_FROM_GUID(GUID Attr)
 	INTERNAL_GUID_TO_STRING(MF_MT_PIXEL_ASPECT_RATIO, 6);             // PIXEL_ASPECT_RATIO
 	INTERNAL_GUID_TO_STRING(MF_MT_INTERLACE_MODE, 6);                 // INTERLACE_MODE
 	INTERNAL_GUID_TO_STRING(MF_MT_AVG_BITRATE, 6);                    // AVG_BITRATE
-	INTERNAL_GUID_TO_STRING(MF_MT_DEFAULT_STRIDE, 6);				  // STRIDE
+	INTERNAL_GUID_TO_STRING(MF_MT_DEFAULT_STRIDE, 6);									// STRIDE
 	INTERNAL_GUID_TO_STRING(MF_MT_AVG_BIT_ERROR_RATE, 6);
 	INTERNAL_GUID_TO_STRING(MF_MT_GEOMETRIC_APERTURE, 6);
 	INTERNAL_GUID_TO_STRING(MF_MT_MINIMUM_DISPLAY_APERTURE, 6);
@@ -108,10 +122,9 @@ LPCSTR STRING_FROM_GUID(GUID Attr)
 	INTERNAL_GUID_TO_STRING(MFVideoFormat_WMV3, 14);                  // WMV3
 	INTERNAL_GUID_TO_STRING(MFVideoFormat_MPG1, 14);                  // MPG1
 	INTERNAL_GUID_TO_STRING(MFVideoFormat_MPG2, 14);                  // MPG2
-	INTERNAL_GUID_TO_STRING(MFVideoFormat_RGB24, 14);				  // RGB24
-	INTERNAL_GUID_TO_STRING(MFVideoFormat_RGB32, 14);				  // RGB32
-	INTERNAL_GUID_TO_STRING(MFVideoFormat_H264, 14);				  // H264
-
+	INTERNAL_GUID_TO_STRING(MFVideoFormat_RGB24, 14);									// RGB24
+	INTERNAL_GUID_TO_STRING(MFVideoFormat_RGB32, 14);									// RGB32
+	INTERNAL_GUID_TO_STRING(MFVideoFormat_H264, 14);									// H264
 
 	// Minor audio type values
 	INTERNAL_GUID_TO_STRING(MFAudioFormat_Base, 14);                  // Base
@@ -140,6 +153,12 @@ done:
 	return pAttrStr;
 }
 
+/**
+* Helper function to get a user friendly description for a media type.
+* Note that there may be properties missing or incorrectly described.
+* @param[in] pMediaType: pointer to the media type to get a description for.
+* @@Returns A string describing the media type.
+*/
 std::string GetMediaTypeDescription(IMFMediaType * pMediaType)
 {
 	HRESULT hr = S_OK;
@@ -191,8 +210,10 @@ std::string GetMediaTypeDescription(IMFMediaType * pMediaType)
 		else
 		{
 			LPOLESTR guidStr = NULL;
-			StringFromCLSID(guidId, &guidStr);
-			//description += guidStr;
+			
+			CHECKHR_GOTO(StringFromCLSID(guidId, &guidStr), done);
+			auto wGuidStr = std::wstring(guidStr);
+			description += std::string(wGuidStr.begin(), wGuidStr.end()); // GUID's won't have wide chars.
 
 			CoTaskMemFree(guidStr);
 		}
@@ -201,109 +222,106 @@ std::string GetMediaTypeDescription(IMFMediaType * pMediaType)
 
 		switch (attrType)
 		{
-		case MF_ATTRIBUTE_UINT32:
-		{
-									UINT32 Val;
-									hr = pMediaType->GetUINT32(guidId, &Val);
-									CHECKHR_GOTO(hr, done);
+			case MF_ATTRIBUTE_UINT32:
+			{
+				UINT32 Val;
+				hr = pMediaType->GetUINT32(guidId, &Val);
+				CHECKHR_GOTO(hr, done);
 
-									description += std::to_string(Val);
-									break;
-		}
-		case MF_ATTRIBUTE_UINT64:
-		{
-									UINT64 Val;
-									hr = pMediaType->GetUINT64(guidId, &Val);
-									CHECKHR_GOTO(hr, done);
+				description += std::to_string(Val);
+				break;
+			}
+			case MF_ATTRIBUTE_UINT64:
+			{
+				UINT64 Val;
+				hr = pMediaType->GetUINT64(guidId, &Val);
+				CHECKHR_GOTO(hr, done);
 
-									if (guidId == MF_MT_FRAME_SIZE)
-									{
-										//tempStr.Format("W %u, H: %u", HI32(Val), LO32(Val));
-										//description += String::Format("W:{0} H:{1}", HI32(Val), LO32(Val));
-									}
-									else if ((guidId == MF_MT_FRAME_RATE) || (guidId == MF_MT_PIXEL_ASPECT_RATIO))
-									{
-										//tempStr.Format("W %u, H: %u", HI32(Val), LO32(Val));
-										//description += String::Format("W:{0} H:{1}", HI32(Val), LO32(Val));
-									}
-									else
-									{
-										//tempStr.Format("%ld", Val);
-										description += std::to_string(Val);
-									}
+				if (guidId == MF_MT_FRAME_SIZE)
+				{
+					//tempStr.Format("W %u, H: %u", HI32(Val), LO32(Val));
+					//description += String::Format("W:{0} H:{1}", HI32(Val), LO32(Val));
+					description += "W:" + std::to_string(HI32(Val)) + " H: " + std::to_string(LO32(Val));
+				}
+				else if ((guidId == MF_MT_FRAME_RATE) || (guidId == MF_MT_PIXEL_ASPECT_RATIO))
+				{
+					//tempStr.Format("W %u, H: %u", HI32(Val), LO32(Val));
+					//description += String::Format("W:{0} H:{1}", HI32(Val), LO32(Val));
+					description += "W:" + std::to_string(HI32(Val)) + " H: " + std::to_string(LO32(Val));
+				}
+				else
+				{
+					//tempStr.Format("%ld", Val);
+					description += std::to_string(Val);
+				}
 
-									//description += tempStr;
+				//description += tempStr;
 
-									break;
-		}
-		case MF_ATTRIBUTE_DOUBLE:
-		{
-									DOUBLE Val;
-									hr = pMediaType->GetDouble(guidId, &Val);
-									CHECKHR_GOTO(hr, done);
+				break;
+			}
+			case MF_ATTRIBUTE_DOUBLE:
+			{
+				DOUBLE Val;
+				hr = pMediaType->GetDouble(guidId, &Val);
+				CHECKHR_GOTO(hr, done);
 
-									//tempStr.Format("%f", Val);
-									description += std::to_string(Val);
-									break;
-		}
-		case MF_ATTRIBUTE_GUID:
-		{
-								  GUID Val;
-								  const char * pValStr;
+				//tempStr.Format("%f", Val);
+				description += std::to_string(Val);
+				break;
+			}
+			case MF_ATTRIBUTE_GUID:
+			{
+				GUID Val;
+				const char * pValStr;
 
-								  hr = pMediaType->GetGUID(guidId, &Val);
-								  CHECKHR_GOTO(hr, done);
+				hr = pMediaType->GetGUID(guidId, &Val);
+				CHECKHR_GOTO(hr, done);
 
-								  pValStr = STRING_FROM_GUID(Val);
-								  if (pValStr != NULL)
-								  {
-									  description += pValStr;
-								  }
-								  else
-								  {
-									  LPOLESTR guidStr = NULL;
-									  StringFromCLSID(Val, &guidStr);
-									  //description += guidStr;
+				pValStr = STRING_FROM_GUID(Val);
+				if (pValStr != NULL)
+				{
+					description += pValStr;
+				}
+				else
+				{
+					LPOLESTR guidStr = NULL;
+					CHECKHR_GOTO(StringFromCLSID(Val, &guidStr), done);
+					auto wGuidStr = std::wstring(guidStr);
+					description += std::string(wGuidStr.begin(), wGuidStr.end()); // GUID's won't have wide chars.
 
-									  CoTaskMemFree(guidStr);
-								  }
+					CoTaskMemFree(guidStr);
+				}
 
-								  break;
-		}
-		case MF_ATTRIBUTE_STRING:
-		{
-									hr = pMediaType->GetString(guidId, TempBuf, sizeof(TempBuf) / sizeof(TempBuf[0]), NULL);
-									if (hr == HRESULT_FROM_WIN32(ERROR_INSUFFICIENT_BUFFER))
-									{
-										description += "<Too Long>";
-										break;
-									}
-									CHECKHR_GOTO(hr, done);
+				break;
+			}
+			case MF_ATTRIBUTE_STRING:
+			{
+				hr = pMediaType->GetString(guidId, TempBuf, sizeof(TempBuf) / sizeof(TempBuf[0]), NULL);
+				if (hr == HRESULT_FROM_WIN32(ERROR_INSUFFICIENT_BUFFER))
+				{
+					description += "<Too Long>";
+					break;
+				}
+				CHECKHR_GOTO(hr, done);
+				auto wstr = std::wstring(TempBuf);
+				description += std::string(wstr.begin(), wstr.end()); // It's unlikely the attribute descriptions will contain multi byte chars.
 
-									//description += CW2A(TempBuf);
-									//description +=TempBuf;
-
-									break;
-		}
-		case MF_ATTRIBUTE_BLOB:
-		{
-								  description += "<BLOB>";
-								  break;
-		}
-		case MF_ATTRIBUTE_IUNKNOWN:
-		{
-									  description += "<UNK>";
-									  break;
-		}
-			//default:
-			//assert(0);
+				break;
+			}
+			case MF_ATTRIBUTE_BLOB:
+			{
+				description += "<BLOB>";
+				break;
+			}
+			case MF_ATTRIBUTE_IUNKNOWN:
+			{
+				description += "<UNK>";
+				break;
+			}
 		}
 
 		description += ", ";
 	}
-
-	//assert(m_szResp.GetLength() >= 2);
-	//m_szResp.Left(m_szResp.GetLength() - 2);
 
 done:
 
@@ -311,7 +329,8 @@ done:
 }
 
 /*
-List all the media modes available on the device.
+* List all the media modes available on a media source.
+* @param[in] pReader: pointer to the media source reader to list the media types for.
 */
 void ListModes(IMFSourceReader *pReader)
 {
@@ -338,10 +357,13 @@ void ListModes(IMFSourceReader *pReader)
 	}
 }
 
-/*
-Copies a media type attribute from an input media type to an output media type. Useful when setting
-up the video sink and where a number of the video sink input attributes need to be duplicated on the
-video writer attributes.
+/**
+* Copies a media type attribute from an input media type to an output media type. Useful when setting
+* up the video sink and where a number of the video sink input attributes need to be duplicated on the
+* video writer attributes.
+* @param[in] pSrc: the media attribute the copy of the key is being made from.
+* @param[in] pDest: the media attribute the copy of the key is being made to.
+* @param[in] key: the media attribute key to copy.
 */
 HRESULT CopyAttribute(IMFAttributes *pSrc, IMFAttributes *pDest, const GUID& key)
 {
@@ -360,6 +382,15 @@ HRESULT CopyAttribute(IMFAttributes *pSrc, IMFAttributes *pDest, const GUID& key
 	return hr;
 }
 
+/**
+* Creates a bitmap file and writes to disk.
+* @param[in] fileName: the path to save the file at.
+* @param[in] width: the width of the bitmap.
+* @param[in] height: the height of the bitmap.
+* @param[in] bitsPerPixel: colour depth of the bitmap pixels (typically 24 or 32).
+* @param[in] bitmapData: a pointer to the bytes containing the bitmap data.
+* @param[in] bitmapDataLength: the number of pixels in the bitmap.
+*/
 void CreateBitmapFile(LPCWSTR fileName, long width, long height, WORD bitsPerPixel, BYTE * bitmapData, DWORD bitmapDataLength)
 {
 	HANDLE file;
@@ -371,9 +402,9 @@ void CreateBitmapFile(LPCWSTR fileName, long width, long height, WORD bitsPerPix
 
 	fileHeader.bfType = 19778;                                                                    //Sets our type to BM or bmp
 	fileHeader.bfSize = sizeof(fileHeader.bfOffBits) + sizeof(RGBTRIPLE);                         //Sets the size equal to the size of the header struct
-	fileHeader.bfReserved1 = 0;                                                                    //sets the reserves to 0
+	fileHeader.bfReserved1 = 0;                                                                   //sets the reserves to 0
 	fileHeader.bfReserved2 = 0;
-	fileHeader.bfOffBits = sizeof(BITMAPFILEHEADER)+sizeof(BITMAPINFOHEADER);                    //Sets offbits equal to the size of file and info header
+	fileHeader.bfOffBits = sizeof(BITMAPFILEHEADER)+sizeof(BITMAPINFOHEADER);											//Sets offbits equal to the size of file and info header
 	fileInfo.biSize = sizeof(BITMAPINFOHEADER);
 	fileInfo.biWidth = width;
 	fileInfo.biHeight = height;
