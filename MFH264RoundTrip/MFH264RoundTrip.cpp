@@ -1,18 +1,28 @@
-/// Filename: MFH264RoundTrip.cpp
-///
-/// Description:
-/// This file contains a C++ console application that captures the real-time video stream from a webcam to an H264 byte array
-/// using the H264 encoder Media Foundation Transform (MFT) and then uses the reverse H264 decoder MFT transform to get back 
-/// the raw image frames.
-///
-/// To convert the raw yuv data dumped at the end of this sample use the ffmpeg command below:
-/// ffmpeg -vcodec rawvideo -s 640x480 -pix_fmt yuv420p -i rawframes.yuv -vframes 1 output.jpeg
-/// ffmpeg -vcodec rawvideo -s 640x480 -pix_fmt yuv420p -i rawframes.yuv out.avi
-///
-/// History:
-/// 05 Mar 2015	Aaron Clauson (aaron@sipsorcery.com)	Created.
-///
-/// License: Public
+/******************************************************************************
+* Filename: MFH264RoundTrip.cpp
+*
+* Description:
+* This file contains a C++ console application that captures the real-time video 
+* stream from a webcam to an H264 byte array using the H264 encoder Media Foundation 
+* Transform (MFT) and then uses the reverse H264 decoder MFT transform to get back
+* the raw image frames.
+*
+* Status: Not Working.
+*
+* To convert the raw yuv data dumped at the end of this sample use the ffmpeg command below:
+* ffmpeg -vcodec rawvideo -s 640x480 -pix_fmt yuv420p -i rawframes.yuv -vframes 1 output.jpeg
+* ffmpeg -vcodec rawvideo -s 640x480 -pix_fmt yuv420p -i rawframes.yuv out.avi
+*
+* Author:
+* Aaron Clauson (aaron@sipsorcery.com)
+*
+* History:
+* 05 Mar 2015	  Aaron Clauson	  Created, Hobart, Australia.
+*
+* License: Public Domain (no warranty, use at own risk)
+/******************************************************************************/
+
+#include "../Common/MFUtility.h"
 
 #include <stdio.h>
 #include <tchar.h>
@@ -21,8 +31,9 @@
 #include <mfreadwrite.h>
 #include <mferror.h>
 #include <wmcodecdsp.h>
+
 #include <fstream>
-#include "..\Common\MFUtility.h"
+#include <iostream>
 
 #pragma comment(lib, "mf.lib")
 #pragma comment(lib, "mfplat.lib")
@@ -31,14 +42,13 @@
 #pragma comment(lib, "mfuuid.lib")
 #pragma comment(lib, "wmcodecdspuuid.lib")
 
-#define CHECK_HR(hr, msg) if (hr != S_OK) { printf(msg); printf("Error: %.2X.\n", hr); goto done; }
+#define WEBCAM_DEVICE_INDEX 0	// Adjust according to desired video capture device.
+#define SAMPLE_COUNT 100			// Adjust depending on number of samples to capture.
+#define CAPTURE_FILENAME "rawframes.yuv"
 
 int _tmain(int argc, _TCHAR* argv[])
 {
-	const int WEBCAM_DEVICE_INDEX = 0;	// <--- Set to 0 to use default system webcam.
-	const int SAMPLE_COUNT = 50;
-
-	std::ofstream outputBuffer("rawframes.yuv", std::ios::out | std::ios::binary);
+	std::ofstream outputBuffer(CAPTURE_FILENAME, std::ios::out | std::ios::binary);
 
 	IMFMediaSource *videoSource = NULL;
 	UINT32 videoDeviceCount = 0;
@@ -57,8 +67,11 @@ int _tmain(int argc, _TCHAR* argv[])
 	IMFMediaType *pDecInputMediaType = NULL, *pDecOutputMediaType = NULL;
 	DWORD mftStatus = 0;
 	
-	CoInitializeEx(NULL, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE);
-	MFStartup(MF_VERSION);
+	CHECK_HR(CoInitializeEx(NULL, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE),
+		"COM initialisation failed.");
+
+	CHECK_HR(MFStartup(MF_VERSION),
+		"Media Foundation initialisation failed.");
 
 	// Get the first available webcam.
 	CHECK_HR(MFCreateAttributes(&videoConfig, 1), "Error creating video configuation.\n");
@@ -98,7 +111,7 @@ int _tmain(int argc, _TCHAR* argv[])
 		(DWORD)MF_SOURCE_READER_FIRST_VIDEO_STREAM,
 		&videoSourceOutputType), "Error retrieving current media type from first video stream.\n");
 
-	Console::WriteLine(GetMediaTypeDescription(videoSourceOutputType));
+	std::cout << GetMediaTypeDescription(videoSourceOutputType) << std::endl;
 
 	CHECK_HR(MFTRegisterLocalByCLSID(
 		__uuidof(CColorConvertDMO),
@@ -147,7 +160,7 @@ int _tmain(int argc, _TCHAR* argv[])
 	CHECK_HR(MFSetAttributeRatio(pMFTInputMediaType, MF_MT_PIXEL_ASPECT_RATIO, 1, 1), "Failed to set aspect ratio on H264 MFT out type.\n");
 	pMFTInputMediaType->SetUINT32(MF_MT_INTERLACE_MODE, 2);	
 
-	Console::WriteLine(GetMediaTypeDescription(pMFTInputMediaType));
+	std::cout << GetMediaTypeDescription(pMFTInputMediaType) << std::endl;
 
 	CHECK_HR(pTransform->SetInputType(0, pMFTInputMediaType, 0), "Failed to set input media type on H.264 encoder MFT.\n");
 
@@ -229,7 +242,7 @@ int _tmain(int argc, _TCHAR* argv[])
 			CHECK_HR(videoSample->SetSampleTime(llVideoTimeStamp), "Error setting the video sample time.\n");
 			CHECK_HR(videoSample->GetSampleDuration(&llSampleDuration), "Error getting video sample duration.\n");
 
-			printf("Passing sample to the H264 encoder with sample time %i.\n", llVideoTimeStamp);
+			printf("Passing sample to the H264 encoder with sample time %l.\n", llVideoTimeStamp);
 
 			// Pass the video sample to the H.264 transform.
 			CHECK_HR(pTransform->ProcessInput(0, videoSample, 0), "The H264 encoder ProcessInput call failed.\n");

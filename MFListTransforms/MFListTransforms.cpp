@@ -1,15 +1,22 @@
-/// Filename: MFListTransforms.cpp
-///
-/// Description:
-/// This file contains a C++ console application that attempts to list the Media Foundation Transforms (MFT) available on
-/// the system.
-///
-/// Note: This sample is currently not working.
-///
-/// History:
-/// 26 Feb 2015	Aaron Clauson (aaron@sipsorcery.com)	Created.
-///
-/// License: Public
+/******************************************************************************
+* Filename: MFListTransforms.cpp
+*
+* Description:
+* This file contains a C++ console application that attempts to list the Media 
+* Foundation Transforms (MFT) available on the system.
+*
+* Status: Not Working.
+*
+* Author:
+* Aaron Clauson (aaron@sipsorcery.com)
+*
+* History:
+* 26 Feb 2015	  Aaron Clauson	  Created, Hobart, Australia.
+*
+* License: Public Domain (no warranty, use at own risk)
+/******************************************************************************/
+
+#include "../Common/MFUtility.h"
 
 #include <stdio.h>
 #include <tchar.h>
@@ -25,12 +32,13 @@
 #pragma comment(lib, "mfreadwrite.lib")
 #pragma comment(lib, "mfuuid.lib")
 
-#define CHECK_HR(hr, msg) if (hr != S_OK) { printf(msg); printf("Error: %.2X.\n", hr); goto done; }
-
 int _tmain(int argc, _TCHAR* argv[])
 {
-	CoInitializeEx(NULL, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE);
-	MFStartup(MF_VERSION);
+	CHECK_HR(CoInitializeEx(NULL, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE),
+		"COM initialisation failed.");
+
+	CHECK_HR(MFStartup(MF_VERSION),
+		"Media Foundation initialisation failed.");
 
 	CLSID *ppCLSIDs = NULL;
 	UINT32 mftCount = 0;
@@ -45,17 +53,19 @@ int _tmain(int argc, _TCHAR* argv[])
 
 	CHECK_HR(MFTEnum(MFT_CATEGORY_VIDEO_ENCODER,
 		0,          // Reserved
-		&info,       // Input type
-		&outInfo,      // Output type
+		&info,      // Input type
+		&outInfo,   // Output type
 		NULL,       // Reserved
 		&ppCLSIDs,
 		&mftCount
-		), "MFTEnum failed.\n");
+		), "MFTEnum failed.");
+
+
 
 done:
 
 	printf("finished.\n");
-	getchar();
+	auto c = getchar();
 
 	return 0;
 }
