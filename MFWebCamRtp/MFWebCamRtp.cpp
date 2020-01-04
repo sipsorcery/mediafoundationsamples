@@ -28,7 +28,7 @@
 *
 * History:
 * 07 Sep 2015	  Aaron Clauson	  Created, Hobart, Australia.
-* 04 Jan 2020		Aaron Clauson		Removed live555 (sledgehammer for a nail in this case).
+* 04 Jan 2020		Aaron Clauson		Removed live555 (sledgehammer for a nail for this sample).
 *
 * License: Public Domain (no warranty, use at own risk)
 /******************************************************************************/

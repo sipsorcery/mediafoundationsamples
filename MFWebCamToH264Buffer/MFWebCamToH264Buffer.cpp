@@ -1,15 +1,22 @@
-/// Filename: MFWebCamToH264Buffer.cpp
-///
-/// Description:
-/// This file contains a C++ console application that captures the realtime video stream from a webcam to an H264 byte array.
-/// Rather than using a black box sink writer to do the H264 encoding a media foundation transform is employed. This allows
-/// more flexibility about what can be done with the encoded samples. For example they could be packetised in RTP packets
-/// and transmitted over a network.
-///
-/// History:
-/// 26 Feb 2015	Aaron Clauson (aaron@sipsorcery.com)	Created.
-///
-/// License: Public
+/******************************************************************************
+* Filename: MFWebCamToH264Buffer.cpp
+*
+* Description:
+* This file contains a C++ console application that captures the realtime video
+* stream from a webcam to an H264 byte array. Rather than using a black box 
+* sink writer to do the H264 encoding a media foundation transform is employed. 
+* This allows more flexibility about what can be done with the encoded samples.
+* For example they could be packetised in RTP packets and transmitted over a 
+* network.
+*
+* Author:
+* Aaron Clauson (aaron@sipsorcery.com)
+*
+* History:
+* 26 Feb 2015	  Aaron Clauson	  Created, Hobart, Australia.
+*
+* License: Public Domain (no warranty, use at own risk)
+/******************************************************************************/
 
 #include <stdio.h>
 #include <tchar.h>
@@ -19,6 +26,7 @@
 #include <mfreadwrite.h>
 #include <mferror.h>
 #include <wmcodecdsp.h>
+
 #include "..\Common\MFUtility.h"
 
 #pragma comment(lib, "mf.lib")
@@ -28,12 +36,14 @@
 #pragma comment(lib, "mfuuid.lib")
 #pragma comment(lib, "wmcodecdspuuid.lib")
 
+#define WEBCAM_DEVICE_INDEX 0			// Set to 0 to use default system webcam.
+#define CAPTURE_FILENAME L"sample.mp4"
+#define SAMPLE_COUNT 100
+#define OUTPUT_FRAME_WIDTH 640		// Adjust if the webcam does not support this frame width.
+#define OUTPUT_FRAME_HEIGHT 480		// Adjust if the webcam does not support this frame height.
+
 int _tmain(int argc, _TCHAR* argv[])
 {
-	const int WEBCAM_DEVICE_INDEX = 1;	// <--- Set to 0 to use default system webcam.
-	const WCHAR *CAPTURE_FILENAME = L"sample.mp4";
-	const int SAMPLE_COUNT = 100;
-
 	IMFMediaSource *videoSource = NULL;
 	UINT32 videoDeviceCount = 0;
 	IMFAttributes *videoConfig = NULL;
@@ -50,90 +60,104 @@ int _tmain(int argc, _TCHAR* argv[])
 	DWORD writerVideoStreamIndex = 0;
 	DWORD totalSampleBufferSize = 0;
 	DWORD mftStatus = 0;
+	UINT webcamNameLength = 0;
 	UINT8 blob[] = { 0x00, 0x00, 0x00, 0x01, 0x67, 0x42, 0xc0, 0x1e, 0x96, 0x54, 0x05, 0x01, 
 		0xe9, 0x80, 0x80, 0x40, 0x00, 0x00, 0x00, 0x01, 0x68, 0xce, 0x3c, 0x80 };
 
-	CoInitializeEx(NULL, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE);
-	MFStartup(MF_VERSION);
+	CHECK_HR(CoInitializeEx(NULL, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE),
+		"COM initialisation failed.");
 
-	// Get the first available webcam.
-	CHECK_HR(MFCreateAttributes(&videoConfig, 1), "Error creating video configuation.\n");
+	CHECK_HR(MFStartup(MF_VERSION),
+		"Media Foundation initialisation failed.");
+
+	CHECK_HR(MFCreateAttributes(&videoConfig, 1), 
+		"Error creating video configuation.");
 
 	// Request video capture devices.
 	CHECK_HR(videoConfig->SetGUID(
 		MF_DEVSOURCE_ATTRIBUTE_SOURCE_TYPE,
-		MF_DEVSOURCE_ATTRIBUTE_SOURCE_TYPE_VIDCAP_GUID), "Error initialising video configuration object.");
+		MF_DEVSOURCE_ATTRIBUTE_SOURCE_TYPE_VIDCAP_GUID), 
+		"Error initialising video configuration object.");
 
-	CHECK_HR(MFEnumDeviceSources(videoConfig, &videoDevices, &videoDeviceCount), "Error enumerating video devices.\n");
+	CHECK_HR(MFEnumDeviceSources(videoConfig, &videoDevices, &videoDeviceCount), 
+		"Error enumerating video devices.\n");
 
-	CHECK_HR(videoDevices[WEBCAM_DEVICE_INDEX]->GetAllocatedString(MF_DEVSOURCE_ATTRIBUTE_FRIENDLY_NAME, &webcamFriendlyName, NULL), "Error retrieving vide device friendly name.\n");
+	CHECK_HR(videoDevices[WEBCAM_DEVICE_INDEX]->GetAllocatedString(MF_DEVSOURCE_ATTRIBUTE_FRIENDLY_NAME, &webcamFriendlyName, &webcamNameLength),
+		"Error retrieving video device friendly name.");
 
 	wprintf(L"First available webcam: %s\n", webcamFriendlyName);
 
-	CHECK_HR(videoDevices[WEBCAM_DEVICE_INDEX]->ActivateObject(IID_PPV_ARGS(&videoSource)), "Error activating video device.\n");
+	CHECK_HR(videoDevices[WEBCAM_DEVICE_INDEX]->ActivateObject(IID_PPV_ARGS(&videoSource)), 
+		"Error activating video device.");
 
 	// Create a source reader.
 	CHECK_HR(MFCreateSourceReaderFromMediaSource(
 		videoSource,
 		videoConfig,
-		&videoReader), "Error creating video source reader.\n");
+		&videoReader), 
+		"Error creating video source reader.");
 
 	CHECK_HR(videoReader->GetCurrentMediaType(
 		(DWORD)MF_SOURCE_READER_FIRST_VIDEO_STREAM,
 		&videoSourceOutputType), "Error retrieving current media type from first video stream.\n");
 
 	// Note the webcam needs to support this media type. The list of media types supported can be obtained using the ListTypes function in MFUtility.h.
-	MFCreateMediaType(&pSrcOutMediaType);
-	pSrcOutMediaType->SetGUID(MF_MT_MAJOR_TYPE, MFMediaType_Video);
-	pSrcOutMediaType->SetGUID(MF_MT_SUBTYPE, WMMEDIASUBTYPE_I420);
-	MFSetAttributeSize(pSrcOutMediaType, MF_MT_FRAME_SIZE, 640, 480);
+	CHECK_HR(MFCreateMediaType(&pSrcOutMediaType), "Failed to create media type.");
+	CHECK_HR(pSrcOutMediaType->SetGUID(MF_MT_MAJOR_TYPE, MFMediaType_Video), "Failed to set major video type.");
+	CHECK_HR(pSrcOutMediaType->SetGUID(MF_MT_SUBTYPE, WMMEDIASUBTYPE_I420), "Failed to set video sub type to I420.");
+	CHECK_HR(MFSetAttributeSize(pSrcOutMediaType, MF_MT_FRAME_SIZE, OUTPUT_FRAME_WIDTH, OUTPUT_FRAME_HEIGHT), "Failed to set frame size.");
 
-	CHECK_HR(videoReader->SetCurrentMediaType(0, NULL, pSrcOutMediaType), "Failed to set media type on source reader.\n");
+	CHECK_HR(videoReader->SetCurrentMediaType(0, NULL, pSrcOutMediaType), "Failed to set media type on source reader.");
 
 	// Create H.264 encoder.
 	CHECK_HR(CoCreateInstance(CLSID_CMSH264EncoderMFT, NULL, CLSCTX_INPROC_SERVER,
-		IID_IUnknown, (void**)&spTransformUnk), "Failed to create H264 encoder MFT.\n");
+		IID_IUnknown, (void**)&spTransformUnk), "Failed to create H264 encoder MFT.");
 
-	CHECK_HR(spTransformUnk->QueryInterface(IID_PPV_ARGS(&pTransform)), "Failed to get IMFTransform interface from H264 encoder MFT object.\n");
+	CHECK_HR(spTransformUnk->QueryInterface(IID_PPV_ARGS(&pTransform)),
+		"Failed to get IMFTransform interface from H264 encoder MFT object.");
 
-	MFCreateMediaType(&pMFTOutputMediaType);
-	pMFTOutputMediaType->SetGUID(MF_MT_MAJOR_TYPE, MFMediaType_Video);
-	pMFTOutputMediaType->SetGUID(MF_MT_SUBTYPE, MFVideoFormat_H264);
-	pMFTOutputMediaType->SetUINT32(MF_MT_AVG_BITRATE, 240000);
-	CHECK_HR(MFSetAttributeSize(pMFTOutputMediaType, MF_MT_FRAME_SIZE, 640, 480), "Failed to set frame size on H264 MFT out type.\n");
-	CHECK_HR(MFSetAttributeRatio(pMFTOutputMediaType, MF_MT_FRAME_RATE, 30, 1), "Failed to set frame rate on H264 MFT out type.\n");
-	CHECK_HR(MFSetAttributeRatio(pMFTOutputMediaType, MF_MT_PIXEL_ASPECT_RATIO, 1, 1), "Failed to set aspect ratio on H264 MFT out type.\n");
-	pMFTOutputMediaType->SetUINT32(MF_MT_INTERLACE_MODE, 2);
-	pMFTOutputMediaType->SetUINT32(MF_MT_ALL_SAMPLES_INDEPENDENT, TRUE);
+	CHECK_HR(MFCreateMediaType(&pMFTOutputMediaType), "Failed to create media type.");
+	CHECK_HR(pMFTOutputMediaType->SetGUID(MF_MT_MAJOR_TYPE, MFMediaType_Video), "Failed to set major video type.");
+	CHECK_HR(pMFTOutputMediaType->SetGUID(MF_MT_SUBTYPE, MFVideoFormat_H264), "Failed to set video sub type to H264.");
+	CHECK_HR(pMFTOutputMediaType->SetUINT32(MF_MT_AVG_BITRATE, 240000), "Failed to set video avg bit rate.");
+	CHECK_HR(MFSetAttributeSize(pMFTOutputMediaType, MF_MT_FRAME_SIZE, OUTPUT_FRAME_WIDTH, OUTPUT_FRAME_HEIGHT), "Failed to set frame size on H264 MFT out type.");
+	CHECK_HR(MFSetAttributeRatio(pMFTOutputMediaType, MF_MT_FRAME_RATE, 30, 1), "Failed to set frame rate on H264 MFT out type.");
+	CHECK_HR(MFSetAttributeRatio(pMFTOutputMediaType, MF_MT_PIXEL_ASPECT_RATIO, 1, 1), "Failed to set aspect ratio on H264 MFT out type.");
+	CHECK_HR(pMFTOutputMediaType->SetUINT32(MF_MT_INTERLACE_MODE, 2), "Failed to set video interlace mode.");
+	CHECK_HR(pMFTOutputMediaType->SetUINT32(MF_MT_ALL_SAMPLES_INDEPENDENT, TRUE), "Failed to set all samples independent.");
 
-	CHECK_HR(pTransform->SetOutputType(0, pMFTOutputMediaType, 0), "Failed to set output media type on H.264 encoder MFT.\n");
+	CHECK_HR(pTransform->SetOutputType(0, pMFTOutputMediaType, 0), 
+		"Failed to set output media type on H.264 encoder MFT.");
 
-	MFCreateMediaType(&pMFTInputMediaType);
-	pMFTInputMediaType->SetGUID(MF_MT_MAJOR_TYPE, MFMediaType_Video);
-	pMFTInputMediaType->SetGUID(MF_MT_SUBTYPE, MFVideoFormat_IYUV);
-	CHECK_HR(MFSetAttributeSize(pMFTInputMediaType, MF_MT_FRAME_SIZE, 640, 480), "Failed to set frame size on H264 MFT out type.\n");
-	CHECK_HR(MFSetAttributeRatio(pMFTInputMediaType, MF_MT_FRAME_RATE, 30, 1), "Failed to set frame rate on H264 MFT out type.\n");
-	CHECK_HR(MFSetAttributeRatio(pMFTInputMediaType, MF_MT_PIXEL_ASPECT_RATIO, 1, 1), "Failed to set aspect ratio on H264 MFT out type.\n");
-	pMFTInputMediaType->SetUINT32(MF_MT_INTERLACE_MODE, 2);	
+	CHECK_HR(MFCreateMediaType(&pMFTInputMediaType), "Failed to create media type.");
+	CHECK_HR(pMFTInputMediaType->SetGUID(MF_MT_MAJOR_TYPE, MFMediaType_Video), "Failed to set major video type.");
+	CHECK_HR(pMFTInputMediaType->SetGUID(MF_MT_SUBTYPE, MFVideoFormat_IYUV), "Failed to set video sub type to YUV.");
+	CHECK_HR(MFSetAttributeSize(pMFTInputMediaType, MF_MT_FRAME_SIZE, 640, 480), "Failed to set frame size on H264 MFT out type.");
+	CHECK_HR(MFSetAttributeRatio(pMFTInputMediaType, MF_MT_FRAME_RATE, 30, 1), "Failed to set frame rate on H264 MFT out type.");
+	CHECK_HR(MFSetAttributeRatio(pMFTInputMediaType, MF_MT_PIXEL_ASPECT_RATIO, 1, 1), "Failed to set aspect ratio on H264 MFT out type.");
+	CHECK_HR(pMFTInputMediaType->SetUINT32(MF_MT_INTERLACE_MODE, 2), "Failed to set video interlace mode.");;
 
-	CHECK_HR(pTransform->SetInputType(0, pMFTInputMediaType, 0), "Failed to set input media type on H.264 encoder MFT.\n");
+	CHECK_HR(pTransform->SetInputType(0, pMFTInputMediaType, 0),
+		"Failed to set input media type on H.264 encoder MFT.");
 
-	CHECK_HR(pTransform->GetInputStatus(0, &mftStatus), "Failed to get input status from H.264 MFT.\n");
+	CHECK_HR(pTransform->GetInputStatus(0, &mftStatus), 
+		"Failed to get input status from H.264 MFT.");
+
 	if (MFT_INPUT_STATUS_ACCEPT_DATA != mftStatus) {
 		printf("E: ApplyTransform() pTransform->GetInputStatus() not accept data.\n");
 		goto done;
 	}
 
-	CHECK_HR(pTransform->ProcessMessage(MFT_MESSAGE_COMMAND_FLUSH, NULL), "Failed to process FLUSH command on H.264 MFT.\n");
-	CHECK_HR(pTransform->ProcessMessage(MFT_MESSAGE_NOTIFY_BEGIN_STREAMING, NULL), "Failed to process BEGIN_STREAMING command on H.264 MFT.\n");
-	CHECK_HR(pTransform->ProcessMessage(MFT_MESSAGE_NOTIFY_START_OF_STREAM, NULL), "Failed to process START_OF_STREAM command on H.264 MFT.\n");
+	CHECK_HR(pTransform->ProcessMessage(MFT_MESSAGE_NOTIFY_BEGIN_STREAMING, NULL), "Failed to process BEGIN_STREAMING command on H.264 MFT.");
+	CHECK_HR(pTransform->ProcessMessage(MFT_MESSAGE_NOTIFY_START_OF_STREAM, NULL), "Failed to process START_OF_STREAM command on H.264 MFT.");
 
 	// Create the MP4 sink writer.
 	CHECK_HR(MFCreateSinkWriterFromURL(
 		CAPTURE_FILENAME,
 		NULL,
 		NULL,
-		&pWriter), "Error creating mp4 sink writer.");
+		&pWriter), 
+		"Error creating mp4 sink writer.");
 
 	CHECK_HR(MFTRegisterLocalByCLSID(
 		__uuidof(CColorConvertDMO),
@@ -143,8 +167,8 @@ int _tmain(int argc, _TCHAR* argv[])
 		0,
 		NULL,
 		0,
-		NULL
-		), "Error registering colour converter DSP.\n");
+		NULL), 
+		"Error registering colour converter DSP.");
 
 	// Configure the output video type on the sink writer.
 	CHECK_HR(MFCreateMediaType(&pVideoOutType), "Configure encoder failed to create media type for video output sink.");
@@ -157,17 +181,18 @@ int _tmain(int argc, _TCHAR* argv[])
 	CHECK_HR(CopyAttribute(videoSourceOutputType, pVideoOutType, MF_MT_INTERLACE_MODE), "Failed to set video writer attribute, interlace mode.");
 
 	// See http://stackoverflow.com/questions/24411737/media-foundation-imfsinkwriterfinalize-method-fails-under-windows-7-when-mux
-	CHECK_HR(pVideoOutType->SetBlob(MF_MT_MPEG_SEQUENCE_HEADER, blob, 24), "Failed to set MF_MT_MPEG_SEQUENCE_HEADER.\n");
+	CHECK_HR(pVideoOutType->SetBlob(MF_MT_MPEG_SEQUENCE_HEADER, blob, 24), 
+		"Failed to set MF_MT_MPEG_SEQUENCE_HEADER.");
 	
-	CHECK_HR(pWriter->AddStream(pVideoOutType, &writerVideoStreamIndex), "Failed to add the video stream to the sink writer.");
+	CHECK_HR(pWriter->AddStream(pVideoOutType, &writerVideoStreamIndex), 
+		"Failed to add the video stream to the sink writer.");
 	
 	pVideoOutType->Release();
 
-	//CHECK_HR(pWriter->SetInputMediaType(writerVideoStreamIndex, videoSourceOutputType, NULL), "Error setting the sink writer video input type.\n");
-
 	// Ready to go.
 
-	CHECK_HR(pWriter->BeginWriting(), "Sink writer begin writing call failed.\n");
+	CHECK_HR(pWriter->BeginWriting(), 
+		"Sink writer begin writing call failed.");
 
 	printf("Reading video samples from webcam.\n");
 
@@ -181,7 +206,6 @@ int _tmain(int argc, _TCHAR* argv[])
 	MFT_OUTPUT_STREAM_INFO StreamInfo;
 	IMFSample *mftOutSample = NULL;
 	IMFMediaBuffer *pBuffer = NULL;
-	//DWORD cbOutBytes = 0;
 	int sampleCount = 0;
 	DWORD mftOutFlags;
 
@@ -255,7 +279,7 @@ int _tmain(int argc, _TCHAR* argv[])
 				}
 			}
 
-			SafeRelease(&videoSample);
+			SAFE_RELEASE(&videoSample);
 		}
 
 		sampleCount++;
@@ -266,14 +290,28 @@ int _tmain(int argc, _TCHAR* argv[])
 
 	if (pWriter)
 	{
-		// See http://stackoverflow.com/questions/24411737/media-foundation-imfsinkwriterfinalize-method-fails-under-windows-7-when-mux for why the Finalize call can fail with MF_E_ATTRIBUTENOTFOUND .
+		// See http://stackoverflow.com/questions/24411737/media-foundation-imfsinkwriterfinalize-method-fails-under-windows-7-when-mux 
+		// for why the Finalize call can fail with MF_E_ATTRIBUTENOTFOUND.
 		CHECK_HR(pWriter->Finalize(), "Error finalising H.264 sink writer.\n");
 	}
 
 done:
 
 	printf("finished.\n");
-	getchar();
+	auto c = getchar();
+
+	SAFE_RELEASE(videoSource);
+	SAFE_RELEASE(videoConfig);
+	SAFE_RELEASE(videoDevices);
+	SAFE_RELEASE(videoReader);
+	SAFE_RELEASE(videoSourceOutputType);
+	SAFE_RELEASE(pSrcOutMediaType);
+	SAFE_RELEASE(spTransformUnk);
+	SAFE_RELEASE(pTransform);
+	SAFE_RELEASE(spResamplerProps);
+	SAFE_RELEASE(pMFTInputMediaType);
+	SAFE_RELEASE(pMFTOutputMediaType);
+	SAFE_RELEASE(pWriter);
 
 	return 0;
 }

@@ -38,3 +38,4 @@ MFMP4ToYUVWithMFT/rawframes.yuv
 MFCaptureRawFramesToFile/rawframes.yuv
 MFH264RoundTrip/rawframes.yuv
 MFWebCamToFile/capture.mp4
+MFWebCamToH264Buffer/sample.mp4

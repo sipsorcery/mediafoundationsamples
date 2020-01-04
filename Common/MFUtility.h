@@ -29,7 +29,7 @@
 #include <locale>
 #include <string>
 
-#define CHECK_HR(hr, msg) if (hr != S_OK) { printf(msg); printf("Error: %.2X.\n", hr); goto done; }
+#define CHECK_HR(hr, msg) if (hr != S_OK) { printf(msg); printf(" Error: %.2X.\n", hr); goto done; }
 
 #define CHECKHR_GOTO(x, y) if(FAILED(x)) goto y
 

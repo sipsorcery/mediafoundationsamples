@@ -17,8 +17,6 @@
 * License: Public Domain (no warranty, use at own risk)
 /******************************************************************************/
 
-#include "../Common/MFUtility.h"
-
 #include <stdio.h>
 #include <tchar.h>
 #include <mfapi.h>
@@ -27,6 +25,8 @@
 #include <mmdeviceapi.h>
 #include <mferror.h>
 #include <Functiondiscoverykeys_devpkey.h>
+
+#include "../Common/MFUtility.h"
 
 #pragma comment(lib, "mf.lib")
 #pragma comment(lib, "mfplat.lib")
