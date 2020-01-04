@@ -21,6 +21,20 @@
   <ItemGroup>
     <ClCompile Include="MFWebCamRtp.cpp" />
   </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\externals\live555\BasicUsageEnvironment\BasicUsageEnvironment.vcxproj">
+      <Project>{f256a94c-2d58-4192-b967-b850b2ad47e1}</Project>
+    </ProjectReference>
+    <ProjectReference Include="..\externals\live555\groupsock\groupsock.vcxproj">
+      <Project>{11fcfde1-ecb4-4388-b7c7-6d35733c30eb}</Project>
+    </ProjectReference>
+    <ProjectReference Include="..\externals\live555\liveMedia\liveMedia.vcxproj">
+      <Project>{ad4bbc71-bf3a-44d1-a1d6-90b41d8f28ec}</Project>
+    </ProjectReference>
+    <ProjectReference Include="..\externals\live555\UsageEnvironment\UsageEnvironment.vcxproj">
+      <Project>{bf6c41bf-08fb-41ca-a392-aad0c2646518}</Project>
+    </ProjectReference>
+  </ItemGroup>
   <PropertyGroup Label="Globals">
     <ProjectGuid>{923E40AD-BBE5-4697-857B-90F3AB8DA965}</ProjectGuid>
     <Keyword>Win32Proj</Keyword>

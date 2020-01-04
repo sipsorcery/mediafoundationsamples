@@ -1,4 +1,4 @@
-/// Filename: MFWebCamRtp.cpp
+ /// Filename: MFWebCamRtp.cpp
 ///
 /// Description:
 /// This file contains a C++ console application that captures the realtime video stream from a webcam using 
@@ -40,6 +40,8 @@
 #include <wmcodecdsp.h>
 #include <codecapi.h>
 #include "..\Common\MFUtility.h"
+
+#include <iostream>
 
 #pragma comment(lib, "mf.lib")
 #pragma comment(lib, "mfplat.lib")
@@ -143,7 +145,7 @@ public:
 			(DWORD)MF_SOURCE_READER_FIRST_VIDEO_STREAM,
 			&videoSourceOutputType), "Error retrieving current media type from first video stream.\n");
 
-		Console::WriteLine(GetMediaTypeDescription(videoSourceOutputType));
+		std::cout << GetMediaTypeDescription(videoSourceOutputType) << std::endl;
 
 		// Note the webcam needs to support this media type. The list of media types supported can be obtained using the ListTypes function in MFUtility.h.
 		MFCreateMediaType(&pSrcOutMediaType);
@@ -304,14 +306,14 @@ public:
 						FramedSource::afterGetting(this);
 
 						buf->Unlock();
-						SafeRelease(&buf);
+						SAFE_RELEASE(&buf);
 
 						frameSent = true;
 						_lastSendAt = GetTickCount();
 					}
 
-					SafeRelease(&pBuffer);
-					SafeRelease(&mftOutSample);
+					SAFE_RELEASE(&pBuffer);
+					SAFE_RELEASE(&mftOutSample);
 
 					break;
 				}
@@ -320,7 +322,7 @@ public:
 				printf("No sample.\n");
 			}
 
-			SafeRelease(&videoSample);
+			SAFE_RELEASE(&videoSample);
 		}
 
 		if (!frameSent)
