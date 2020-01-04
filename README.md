@@ -1,5 +1,7 @@
 # Windows Media Foundation Samples
-A set of minimal sample apps that demonstrate how to use certain parts of Microsoft's Windows Media Foundation API. The original motivation for these samples was the attempt to find a way to stream audio and video from a webcam, encoded as H264 and/or VP8, over RTP and then ideally render it at the remote destination. As of Jan 2020 the hoal has still not been achieved.
+A set of minimal sample apps that demonstrate how to use certain parts of Microsoft's Windows Media Foundation API. The original motivation for these samples was the attempt to find a way to stream audio and video from a webcam, encoded as H264 and/or VP8, over RTP and then ideally render it at the remote destination. 
+
+As of **January 2020** the goal has not been achieved.
 
  - MFAudio - **Working**. Play audio from file on speaker.
  
