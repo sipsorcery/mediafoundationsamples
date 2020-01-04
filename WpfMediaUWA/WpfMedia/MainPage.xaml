@@ -12,7 +12,11 @@
             <MediaElement x:Name="_remoteVideo" Margin="0" RealTimePlayback="True" MinWidth="640" MinHeight="360"/>
         </Border>
         <Border BorderBrush="#FF0B48CB" BorderThickness="2" Margin="0,375,0,0" CornerRadius="2" Height="360" VerticalAlignment="Top" HorizontalAlignment="Center" Width="640" MinWidth="640" MinHeight="360">
-            <CaptureElement x:Name="_localCamera" Margin="0"/>
+            <CaptureElement x:Name="_localCamera" Margin="0" >
+                <CaptureElement.Projection>
+                    <PlaneProjection RotationX="180"/>
+                </CaptureElement.Projection>
+            </CaptureElement>
         </Border>
     </Grid>
 </Page>
