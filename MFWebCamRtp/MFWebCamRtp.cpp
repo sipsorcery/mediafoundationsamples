@@ -1,33 +1,39 @@
- /// Filename: MFWebCamRtp.cpp
-///
-/// Description:
-/// This file contains a C++ console application that captures the realtime video stream from a webcam using 
-/// Windows Media Foundation, encodes it as H264 and then transmits it to an RTP end point using the real-time
-/// communications API from Live555 (http://live555.com/).
-///
-/// To view the RTP feed produced by this sample the steps are:
-/// 1. Download ffplay from http://ffmpeg.zeranoe.com/builds/ (the static build has a ready to go ffplay executable),
-/// 2. Create a file called test.sdp with contents as below:
-/// v=0
-/// o = -0 0 IN IP4 127.0.0.1
-/// s = No Name
-/// t = 0 0
-/// c = IN IP4 127.0.0.1
-/// m = video 1234 RTP / AVP 96
-/// a = rtpmap:96 H264 / 90000
-/// a = fmtp : 96 packetization - mode = 1
-/// 3. Start ffplay BEFORE running this sample:
-/// ffplay -i test.sdp -x 800 -y 600 -profile:v baseline
-///
-/// History:
-/// 07 Sep 2015	Aaron Clauson (aaron@sipsorcery.com)	Created.
-///
-/// License: Public
-/// License for Live555: LGPL (http://live555.com/liveMedia/#license)
+/******************************************************************************
+* Filename: MFWebCamRtp.cpp
+*
+* Description:
+* This file contains a C++ console application that captures the realtime video 
+* stream from a webcam using Windows Media Foundation, encodes it as H264 and then 
+* transmits it to an RTP end point.
+*
+* To view the RTP feed produced by this sample the steps are:
+* 1. Download ffplay from http://ffmpeg.zeranoe.com/builds/ (the static build has 
+*    a ready to go ffplay executable),
+* 2. Create a file called test.sdp with contents as below:
+* v=0
+* o = -0 0 IN IP4 127.0.0.1
+* s = No Name
+* t = 0 0
+* c = IN IP4 127.0.0.1
+* m = video 1234 RTP / AVP 96
+* a = rtpmap:96 H264 / 90000
+* a = fmtp : 96 packetization - mode = 1
+* 3. Start ffplay BEFORE running this sample:
+* ffplay -i test.sdp -x 800 -y 600 -profile:v baseline
+*
+* Status: Not Working.
+*
+* Author:
+* Aaron Clauson (aaron@sipsorcery.com)
+*
+* History:
+* 07 Sep 2015	  Aaron Clauson	  Created, Hobart, Australia.
+* 04 Jan 2020		Aaron Clauson		Removed live555 (sledgehammer for a nail in this case).
+*
+* License: Public Domain (no warranty, use at own risk)
+/******************************************************************************/
 
-#include "liveMedia.hh"
-#include "BasicUsageEnvironment.hh"
-#include "GroupsockHelper.hh"
+#include "..\Common\MFUtility.h"
 
 #include <stdint.h>
 #include <stdio.h>
@@ -39,7 +45,6 @@
 #include <mferror.h>
 #include <wmcodecdsp.h>
 #include <codecapi.h>
-#include "..\Common\MFUtility.h"
 
 #include <iostream>
 
@@ -50,8 +55,7 @@
 #pragma comment(lib, "mfuuid.lib")
 #pragma comment(lib, "wmcodecdspuuid.lib")
 
-class MediaFoundationH264LiveSource :
-	public FramedSource
+class MediaFoundationH264LiveSource
 {
 private:
 	static const int CAMERA_RESOLUTION_WIDTH = 640; // 800; // 1280;
@@ -61,7 +65,6 @@ private:
 	static const int WEBCAM_DEVICE_INDEX = 0;	// <--- Set to 0 to use default system webcam.
 
 	bool _isInitialised = false;
-	EventTriggerId eventTriggerId = 0;
 	int _frameCount = 0;
 	long int _lastSendAt;
 
@@ -76,28 +79,14 @@ private:
 	DWORD mftStatus = 0;
 
 public:
-	static MediaFoundationH264LiveSource* createNew(UsageEnvironment& env)
-	{
-		return new MediaFoundationH264LiveSource(env);
-	}
 
-	MediaFoundationH264LiveSource(UsageEnvironment& env) :
-		FramedSource(env)
+	MediaFoundationH264LiveSource()
 	{
 		_lastSendAt = GetTickCount();
-		eventTriggerId = envir().taskScheduler().createEventTrigger(deliverFrame0);
 	}
 
 	~MediaFoundationH264LiveSource()
 	{ }
-
-	bool isH264VideoStreamFramer() const {
-		return true;
-	}
-
-	static void deliverFrame0(void* clientData) {
-		((MediaFoundationH264LiveSource*)clientData)->doGetNextFrame();
-	}
 
 	bool initialise()
 	{
@@ -114,20 +103,24 @@ public:
 			0,
 			NULL,
 			0,
-			NULL
-			), "Error registering colour converter DSP.\n");
+			NULL),
+			"Error registering colour converter DSP.\n");
 
 		// Get the first available webcam.
-		CHECK_HR(MFCreateAttributes(&videoConfig, 1), "Error creating video configuation.\n");
+		CHECK_HR(MFCreateAttributes(&videoConfig, 1), 
+			"Error creating video configuation.\n");
 
 		// Request video capture devices.
 		CHECK_HR(videoConfig->SetGUID(
 			MF_DEVSOURCE_ATTRIBUTE_SOURCE_TYPE,
-			MF_DEVSOURCE_ATTRIBUTE_SOURCE_TYPE_VIDCAP_GUID), "Error initialising video configuration object.");
+			MF_DEVSOURCE_ATTRIBUTE_SOURCE_TYPE_VIDCAP_GUID), 
+			"Error initialising video configuration object.");
 
-		CHECK_HR(MFEnumDeviceSources(videoConfig, &videoDevices, &videoDeviceCount), "Error enumerating video devices.\n");
+		CHECK_HR(MFEnumDeviceSources(videoConfig, &videoDevices, &videoDeviceCount),
+			"Error enumerating video devices.");
 
-		CHECK_HR(videoDevices[WEBCAM_DEVICE_INDEX]->GetAllocatedString(MF_DEVSOURCE_ATTRIBUTE_FRIENDLY_NAME, &webcamFriendlyName, NULL), "Error retrieving vide device friendly name.\n");
+		CHECK_HR(videoDevices[WEBCAM_DEVICE_INDEX]->GetAllocatedString(MF_DEVSOURCE_ATTRIBUTE_FRIENDLY_NAME, &webcamFriendlyName, NULL),
+			"Error retrieving vide device friendly name.");
 
 		wprintf(L"First available webcam: %s\n", webcamFriendlyName);
 
@@ -226,8 +219,6 @@ public:
 			}
 		}
 
-		if (!isCurrentlyAwaitingData()) return;
-
 		DWORD processOutputStatus = 0;
 		IMFSample *videoSample = NULL;
 		DWORD streamIndex, flags;
@@ -296,14 +287,14 @@ public:
 
 						printf("Writing sample %i, spacing %I64dms, sample time %I64d, sample duration %I64d, sample size %i.\n", _frameCount, now - _lastSendAt, llVideoTimeStamp, llSampleDuration, bufLength);
 
-						fFrameSize = bufLength;
+						/*fFrameSize = bufLength;
 						fDurationInMicroseconds = 0;
 						gettimeofday(&fPresentationTime, NULL);
 
 						buf->Lock(&rawBuffer, NULL, NULL);
 						memmove(fTo, rawBuffer, fFrameSize);
 
-						FramedSource::afterGetting(this);
+						FramedSource::afterGetting(this);*/
 
 						buf->Unlock();
 						SAFE_RELEASE(&buf);
@@ -325,11 +316,6 @@ public:
 			SAFE_RELEASE(&videoSample);
 		}
 
-		if (!frameSent)
-		{
-			envir().taskScheduler().triggerEvent(eventTriggerId, this);
-		}
-
 		return;
 
 	done:
@@ -340,22 +326,28 @@ public:
 
 int main()
 {
-	CoInitializeEx(NULL, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE);
-	MFStartup(MF_VERSION);
+	MediaFoundationH264LiveSource videoSrc;
 
-	TaskScheduler* scheduler = BasicTaskScheduler::createNew();
-	UsageEnvironment* env = BasicUsageEnvironment::createNew(*scheduler);
+	CHECK_HR(CoInitializeEx(NULL, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE),
+		"COM initialisation failed.");
 
-	in_addr dstAddr = { 127, 0, 0, 1 };
-	Groupsock rtpGroupsock(*env, dstAddr, 1233, 255);
-	rtpGroupsock.addDestination(dstAddr, 1234, 0);
-	RTPSink * rtpSink = H264VideoRTPSink::createNew(*env, &rtpGroupsock, 96);
+	CHECK_HR(MFStartup(MF_VERSION),
+		"Media Foundation initialisation failed.");
 
-	MediaFoundationH264LiveSource * mediaFoundationH264Source = MediaFoundationH264LiveSource::createNew(*env);
-	rtpSink->startPlaying(*mediaFoundationH264Source, NULL, NULL);
+	if (videoSrc.initialise()) {
 
-	// This function call does not return.
-	env->taskScheduler().doEventLoop();
+		std::cout << "Successfully initialised video source." << std::endl;
+
+		in_addr dstAddr = { 127, 0, 0, 1 };
+	}
+	else {
+		std::cerr << "Failed to initialise video source." << std::endl;
+	}
+
+done:
+
+	printf("finished.\n");
+	auto c = getchar();
 
 	return 0;
 }

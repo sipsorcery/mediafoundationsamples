@@ -7,7 +7,7 @@ A  set of minimal sample apps that demonstrate how to use certain parts of Micro
  
  - MFH264RoundTrip - Not Working. Captures video frames, H264 encode to byte array, decode to YUV (replicates encode, transmit, decode).
  
- - MFListTransforms - Not Working. Attempts to list the available MFT Transforms.
+ - MFListTransforms - Working. Lists the available MFT Transforms to convert between two media types.
  
  - MFMP4ToYUVWithMFT
  
@@ -15,7 +15,7 @@ A  set of minimal sample apps that demonstrate how to use certain parts of Micro
  
  - MFVideoEVR - Not Working. Display video in Window.
  
- - MFWebCamRtp - Not Working. Stream mp4 file to ffplay.
+ - MFWebCamRtp - Not Working. Stream mp4 file to ffplay with RTP stream.
  
  - MFWebCamToFile - Working. Captures 100 samples from default webcam to an mp4 file. TODO: Video inverted.
  
