@@ -11,7 +11,7 @@
 *
 * History:
 * 26 Feb 2015	  Aaron Clauson	  Created, Hobart, Australia.
-* 04 Jan 2020   Aaron Clauson   Tidied up and got ti doing something useful.
+* 04 Jan 2020   Aaron Clauson   Tidied up and got it doing something useful.
 *
 * License: Public Domain (no warranty, use at own risk)
 /******************************************************************************/
@@ -32,6 +32,7 @@
 #pragma comment(lib, "mfreadwrite.lib")
 #pragma comment(lib, "mfuuid.lib")
 
+void ListTansforms(MFT_REGISTER_TYPE_INFO* pInput, MFT_REGISTER_TYPE_INFO* pOutput);
 HRESULT DisplayMFT(IMFActivate* pMFActivate);
 
 int _tmain(int argc, _TCHAR* argv[])
@@ -42,47 +43,84 @@ int _tmain(int argc, _TCHAR* argv[])
 	CHECK_HR(MFStartup(MF_VERSION),
 		"Media Foundation initialisation failed.");
 
-	IMFActivate** ppActivate = NULL;
-	IMFTransform* pDecoder = NULL;
-	UINT32 mftCount = 0;
+  // Audio subtype GUIDS : https://docs.microsoft.com/en-us/windows/win32/medfound/audio-subtype-guids
+  // Video subtype GUIDS : https://docs.microsoft.com/en-us/windows/win32/medfound/video-subtype-guids
 
-	MFT_REGISTER_TYPE_INFO info = { 0 };
-	info.guidMajorType = MFMediaType_Video;
-	info.guidSubtype = MFVideoFormat_YUY2;
+  MFT_REGISTER_TYPE_INFO videoYuv = { MFMediaType_Video, MFVideoFormat_YUY2 };
+  MFT_REGISTER_TYPE_INFO videoRgb24 = { MFMediaType_Video, MFVideoFormat_RGB24 };
+  MFT_REGISTER_TYPE_INFO videoH264 = { MFMediaType_Video, MFVideoFormat_H264 };
+  MFT_REGISTER_TYPE_INFO videoVP8 = { MFMediaType_Video, MFVideoFormat_VP80 };
+	MFT_REGISTER_TYPE_INFO audioPcm = { MFMediaType_Audio, MFAudioFormat_PCM };
+	MFT_REGISTER_TYPE_INFO audioMp3 = { MFMediaType_Audio, MFAudioFormat_MP3 };
 
-	MFT_REGISTER_TYPE_INFO outInfo = { 0 };
-	outInfo.guidMajorType = MFMediaType_Video;
-	outInfo.guidSubtype = MFVideoFormat_H264;
+  std::cout << "Video MFT's for input: YUV2, output: all" << std::endl;
+  ListTansforms(&videoYuv, NULL);
+  std::cout << std::endl;
 
-	CHECK_HR(MFTEnumEx(MFT_CATEGORY_VIDEO_ENCODER,
-		MFT_ENUM_FLAG_SYNCMFT | MFT_ENUM_FLAG_ASYNCMFT | MFT_ENUM_FLAG_HARDWARE | MFT_ENUM_FLAG_SORTANDFILTER,
-		&info,      // Input type
-		&outInfo,   // Output type
-		&ppActivate,
-		&mftCount
-		), "MFTEnumEx failed.");
+  std::cout << "Video MFT's for input: YUV2, output: H264" << std::endl;
+  ListTansforms(&videoYuv, &videoH264);
+  std::cout << std::endl;
 
-	printf("MFT count %d.\n", mftCount);
+  std::cout << "Video MFT's for input: YUV2, output: VP8" << std::endl;
+  ListTansforms(&videoYuv, &videoVP8);
+  std::cout << std::endl;
 
-	for (int i = 0; i < mftCount; i++) {
+  std::cout << "Video MFT's for input: RGB24, output: H264" << std::endl;
+  ListTansforms(&videoRgb24, &videoH264);
+  std::cout << std::endl;
 
-		//CHECK_HR(ppActivate[i]->ActivateObject(IID_PPV_ARGS(&pDecoder)),
-		//	"Failed to activate decoder.");
-    auto hr = DisplayMFT(ppActivate[i]);
-	}
+  std::cout << "Audio MFT's for input: PCM, output: all" << std::endl;
+  ListTansforms(&audioPcm, NULL);
+  std::cout << std::endl;
+
+  std::cout << "Audio MFT's for input: PCM, output: MP3" << std::endl;
+  ListTansforms(&audioPcm, &audioMp3);
+  std::cout << std::endl;
 
 done:
-
-	for (UINT32 i = 0; i < mftCount; i++)
-	{
-		ppActivate[i]->Release();
-	}
-	CoTaskMemFree(ppActivate);
-
 	printf("finished.\n");
 	auto c = getchar();
 
 	return 0;
+}
+
+/**
+* Prints out a list of all the Media Foundation Transforms that match for
+* the input media type and the optional output media type.
+* @param[in] pInput: pointer to the MFT input type to match.
+* @param[in] pOutput: Optional. Pointer to the MFT output type to match. If
+                      NULL all MFT's for teh input type will be listed.
+* Remarks:
+* Copied from https://github.com/mvaneerde/blog/blob/develop/mftenum/mftenum/mftenum.cpp.
+*/
+void ListTansforms(MFT_REGISTER_TYPE_INFO* pInput, MFT_REGISTER_TYPE_INFO* pOutput)
+{
+  IMFActivate** ppActivate = NULL;
+  IMFTransform* pDecoder = NULL;
+  UINT32 mftCount = 0;
+  
+  auto category = (pInput->guidMajorType == MFMediaType_Audio) ? MFT_CATEGORY_AUDIO_ENCODER : MFT_CATEGORY_VIDEO_ENCODER;
+  CHECK_HR(MFTEnumEx(category,
+    NULL, //MFT_ENUM_FLAG_SYNCMFT | MFT_ENUM_FLAG_ASYNCMFT | MFT_ENUM_FLAG_HARDWARE | MFT_ENUM_FLAG_SORTANDFILTER,
+    pInput,
+    pOutput,
+    &ppActivate,
+    &mftCount
+  ), "MFTEnumEx failed.");
+
+  printf("MFT count %d.\n", mftCount);
+
+  for (int i = 0; i < mftCount; i++) {
+    auto hr = DisplayMFT(ppActivate[i]);
+  }
+
+done:
+
+  for (UINT32 i = 0; i < mftCount; i++)
+  {
+    ppActivate[i]->Release();
+  }
+  CoTaskMemFree(ppActivate);
 }
 
 /**
@@ -115,11 +153,11 @@ HRESULT DisplayMFT(IMFActivate* pMFActivate) {
 
   // get the friendly name string from the IMFAttributes of the activation object
   LPWSTR szFriendlyName = NULL;
-#pragma prefast(suppress: __WARNING_PASSING_FUNCTION_UNEXPECTED_NULL, "IMFAttributes::GetAllocatedString third argument is optional");
+  UINT len = 0;
   hr = pMFActivate->GetAllocatedString(
     MFT_FRIENDLY_NAME_Attribute,
     &szFriendlyName,
-    NULL // don't care about the length of the string, and MSDN agrees, but SAL annotation is missing "opt"
+    &len
   );
 
   if (MF_E_ATTRIBUTENOTFOUND == hr) {
