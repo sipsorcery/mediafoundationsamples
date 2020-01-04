@@ -1,5 +1,5 @@
-# mediafoundationsamples
-A  set of minimal sample apps that demonstrate how to use certain parts of Microsoft's Windows Media Foundation API.
+# Windows Media Foundation Samples
+A set of minimal sample apps that demonstrate how to use certain parts of Microsoft's Windows Media Foundation API. The original motivation for these samples was the attempt to find a way to stream audio and video from a webcam, encoded as H264 and/or VP8, over RTP and then ideally render it at the remote destination. As of Jan 2020 the hoal has still not been achieved.
 
  - MFAudio - **Working**. Play audio from file on speaker.
  
@@ -19,6 +19,6 @@ A  set of minimal sample apps that demonstrate how to use certain parts of Micro
  
  - MFWebCamToFile - **Working**. Captures 100 samples from default webcam to an mp4 file. TODO: Video inverted.
  
- - MFWebCamToH264Buffer
+ - MFWebCamToH264Buffer - 
  
  - WpfMediaUWA - **Working**. Initial foray into how Media Foundation can work with WPF in a Universal Windows Application (UWA). UWA is currently impractical due to [deployment contraints](https://docs.microsoft.com/en-us/windows/apps/desktop/choose-your-platform), i.e. Windows Store only. Hopefully in 2020 with the introduction of [Windows UI 3.0](https://docs.microsoft.com/en-us/uwp/toolkits/) using the types of controls in this sample will become practical.
