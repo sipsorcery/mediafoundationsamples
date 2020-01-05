@@ -1,41 +1,43 @@
-/// Filename: MFVideoEVR.cpp
-///
-/// Description:
-/// This file contains a C++ console application that is attempting to play the video stream from a sample MP4 file using the Windows
-/// Media Foundation API. Specifically it's attempting to use the Enhanced Video Renderer (https://msdn.microsoft.com/en-us/library/windows/desktop/ms694916%28v=vs.85%29.aspx)
-/// to playback the video.
-///
-/// Common HRESULT values https://msdn.microsoft.com/en-us/library/windows/desktop/aa378137(v=vs.85).aspx
-/// 0x80004002 E_NOINTERFACE
-/// 0x80070057 E_INVALIDARG	One or more arguments are not valid (https://msdn.microsoft.com/en-us/library/windows/desktop/aa378137(v=vs.85).aspx)
-/// 0xC00D36D7 MF_E_NO_CLOCK
-/// 0xC00D36B4 MF_E_INVALIDMEDIATYPE
-/// 0xC00D5212 MF_E_TOPO_CODEC_NOT_FOUND
-/// 0xC00D36C8 MF_E_NO_SAMPLE_TIMESTAMP
-/// 
-/// NOTE: This sample is currently not working.
-///
-/// History:
-/// 01 Jan 2015	Aaron Clauson (aaron@sipsorcery.com)	Created.
-/// 15 Sep 2015 Aaron Clauson							Trying with webcam instead of file but still no idea how to interface between EVR and an actual window.
-///
-/// License: Public
+/******************************************************************************
+* Filename: MFVideoEVR.cpp
+*
+* Description:
+* This file contains a C++ console application that is attempting to play the
+* video stream from a sample MP4 file or webcam using the Windows Media Foundation 
+* API. Specifically it's attempting to use the Enhanced Video Renderer 
+* (https://msdn.microsoft.com/en-us/library/windows/desktop/ms694916%28v=vs.85%29.aspx)
+* to playback the video.
+*
+* Status:
+* Not Working.
+*
+* Author:
+* Aaron Clauson (aaron@sipsorcery.com)
+*
+* History:
+* 01 Jan 2015	  Aaron Clauson	  Created, Hobart, Australia.
+* 15 Sep 2015 Aaron Clauson			Trying with webcam instead of file but still no idea 
+*                               how to interface between EVR and an actual window.
+*
+* License: Public Domain (no warranty, use at own risk)
+/******************************************************************************/
+
+#include "..\Common\MFUtility.h"
 
 #include <stdio.h>
 #include <tchar.h>
+#include <d3d9.h>
+#include <Dxva2api.h>
 #include <evr.h>
 #include <mfapi.h>
+#include <mfobjects.h>
 #include <mfplay.h>
 #include <mfreadwrite.h>
 #include <mferror.h>
-#include "..\Common\MFUtility.h"
-
 #include <windows.h>
 #include <windowsx.h>
 
-#include <d3d9.h>
-#include <mfobjects.h>
-#include <Dxva2api.h>
+#include <iostream>
 
 #pragma comment(lib, "mf.lib")
 #pragma comment(lib, "evr.lib")
@@ -48,9 +50,8 @@
 #pragma comment(lib, "d3d9.lib")
 #pragma comment(lib, "Dxva2.lib")
 
-#define CHECK_HR(hr, msg) if (hr != S_OK) { printf(msg); printf("Error: %.2X.\n", hr); goto done; }
-
-void InitializeWindow();
+// Forward function definitions.
+DWORD InitializeWindow(LPVOID lpThreadParameter);
 HRESULT CreateD3DSample(IDirect3DSwapChain9 *pSwapChain, IMFSample **ppVideoSample);
 
 // Constants 
@@ -59,24 +60,19 @@ const WCHAR WINDOW_NAME[] = L"MFVideoEVR";
 
 // Globals.
 HWND _hwnd;
-LPDIRECT3D9 _d3d;    // the pointer to our Direct3D interface
-LPDIRECT3DDEVICE9 _d3ddev;    // the pointer to the device class
+LPDIRECT3D9 _d3d;									// Pointer to our Direct3D interface
+LPDIRECT3DDEVICE9 _d3ddev;				// Pointer to the device class
 IDirect3DSwapChain9 * _pSwapChain;
 IDirect3DTexture9 *_pd3dTexture;
 
-using namespace System::Threading::Tasks;
-
 int main()
 {
-	CoInitializeEx(NULL, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE);
-	MFStartup(MF_VERSION);
-
 	IMFMediaSource *videoSource = NULL;
 	UINT32 videoDeviceCount = 0;
 	IMFAttributes *videoConfig = NULL;
 	IMFActivate **videoDevices = NULL;
 	IMFSourceReader *videoReader = NULL;
-	WCHAR *webcamFriendlyName;
+	WCHAR *webcamFriendlyName = NULL;
 	IMFMediaType *videoSourceOutputType = NULL, *pvideoSourceModType = NULL, *pSrcOutMediaType = NULL;
 	IMFSourceResolver *pSourceResolver = NULL;
 	IUnknown* uSource = NULL;
@@ -103,6 +99,12 @@ int main()
 	IDirect3DDeviceManager9 * pD3DManager = nullptr;
 	IMFVideoSampleAllocator* pEvrSampleAllocator = nullptr;
 
+	CHECK_HR(CoInitializeEx(NULL, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE),
+		"COM initialisation failed.\n");
+
+	CHECK_HR(MFStartup(MF_VERSION),
+		"Media Foundation initialisation failed.\n");
+
 	CHECK_HR(MFTRegisterLocalByCLSID(
 		__uuidof(CColorConvertDMO),
 		MFT_CATEGORY_VIDEO_PROCESSOR,
@@ -114,21 +116,20 @@ int main()
 		NULL
 		), "Error registering colour converter DSP.\n");
 
-	Task::Factory->StartNew(gcnew Action(InitializeWindow));
-
+	// Create a separate Window and thread to host the Video player.
+	CreateThread(NULL, 0, (LPTHREAD_START_ROUTINE)InitializeWindow, NULL, 0, NULL);
 	Sleep(1000);
-
 	if (_hwnd == nullptr)
 	{
 		printf("Failed to initialise video window.\n");
 		goto done;
 	}
 
-	// Create EVR sink .
-	//CHECK_HR(MFCreateVideoRenderer(__uuidof(IMFMediaSink), (void**)&pVideoSink), "Failed to create video sink.\n");
+	CHECK_HR(MFCreateVideoRendererActivate(_hwnd, &pActive), 
+		"Failed to created video rendered activation context.");
 
-	CHECK_HR(MFCreateVideoRendererActivate(_hwnd, &pActive), "Failed to created video rendered activation context.\n");
-	CHECK_HR(pActive->ActivateObject(IID_IMFMediaSink, (void**)&pVideoSink), "Failed to activate IMFMediaSink interface on video sink.\n");
+	CHECK_HR(pActive->ActivateObject(IID_IMFMediaSink, (void**)&pVideoSink), 
+		"Failed to activate IMFMediaSink interface on video sink.");
 
 	// Initialize the renderer before doing anything else including querying for other interfaces (https://msdn.microsoft.com/en-us/library/windows/desktop/ms704667(v=vs.85).aspx).
 	CHECK_HR(pVideoSink->QueryInterface(__uuidof(IMFVideoRenderer), (void**)&pVideoRenderer), "Failed to get video Renderer interface from EVR media sink.\n");
@@ -147,7 +148,7 @@ int main()
 	CHECK_HR(MFCreateSourceResolver(&pSourceResolver), "MFCreateSourceResolver failed.\n");
 
 	CHECK_HR(pSourceResolver->CreateObjectFromURL(
-		L"..\\..\\MediaFiles\\big_buck_bunny.mp4",		// URL of the source.
+		L"../MediaFiles/big_buck_bunny.mp4",		// URL of the source.
 		MF_RESOLUTION_MEDIASOURCE,  // Create a source object.
 		NULL,                       // Optional property store.
 		&ObjectType,				// Receives the created object type. 
@@ -168,9 +169,8 @@ int main()
 	CHECK_HR(videoReader->GetCurrentMediaType((DWORD)MF_SOURCE_READER_FIRST_VIDEO_STREAM, &videoSourceOutputType),
 		"Error retrieving current media type from first video stream.\n");
 
-	Console::WriteLine("Default output media type for source reader:");
-	Console::WriteLine(GetMediaTypeDescription(videoSourceOutputType));
-	Console::WriteLine();
+	std::cout << "Default output media type for source reader:" << std::endl;
+	std::cout << GetMediaTypeDescription(videoSourceOutputType) << std::endl << std::endl;
 
 	// Set the video output type on the source reader.
 	CHECK_HR(MFCreateMediaType(&pvideoSourceModType), "Failed to create video output media type.\n");
@@ -185,9 +185,8 @@ int main()
 
 	CHECK_HR(videoReader->SetCurrentMediaType((DWORD)MF_SOURCE_READER_FIRST_VIDEO_STREAM, NULL, pvideoSourceModType), "Failed to set media type on source reader.\n");
 
-	Console::WriteLine("Output media type set on source reader:");
-	Console::WriteLine(GetMediaTypeDescription(pvideoSourceModType));
-	Console::WriteLine();
+	std::cout << "Output media type set on source reader:" << std::endl;
+	std::cout << GetMediaTypeDescription(pvideoSourceModType) << std::endl << std::endl;
 
 	CHECK_HR(pVideoSink->GetStreamSinkByIndex(0, &pStreamSink), "Failed to get video renderer stream by index.\n");
 	CHECK_HR(pStreamSink->GetMediaTypeHandler(&pMediaTypeHandler), "Failed to get media type handler.\n");
@@ -206,9 +205,8 @@ int main()
 	//CHECK_HR(pMediaTypeHandler->GetMediaTypeByIndex(0, &pSinkMediaType), "Failed to get sink media type.\n");
 	CHECK_HR(pMediaTypeHandler->SetCurrentMediaType(pVideoOutType), "Failed to set current media type.\n");
 
-	Console::WriteLine("Input media type set on EVR:");
-	Console::WriteLine(GetMediaTypeDescription(pVideoOutType));
-	Console::WriteLine();
+	std::cout << "Input media type set on EVR:" << std::endl;
+	std::cout << GetMediaTypeDescription(pVideoOutType) << std::endl << std::endl;
 
 	CHECK_HR(MFCreatePresentationClock(&pClock), "Failed to create presentation clock.\n");
 	CHECK_HR(MFCreateSystemTimeSource(&pTimeSource), "Failed to create system time source.\n");
@@ -247,9 +245,6 @@ int main()
 	//_d3ddev->EndScene();    // ends the 3D scene
 	//_d3ddev->Present(NULL, NULL, NULL, NULL);    // displays the created frame
 
-	Console::WriteLine("Press any key to start video sampling...");
-	Console::ReadLine();
-
 	IMFSample *videoSample = NULL;
 	DWORD streamIndex, flags;
 	LONGLONG llTimeStamp;
@@ -263,7 +258,7 @@ int main()
 			0,                              // Flags.
 			&streamIndex,                   // Receives the actual stream index. 
 			&flags,                         // Receives status flags.
-			&llTimeStamp,					// Receives the time stamp.
+			&llTimeStamp,										// Receives the time stamp.
 			&videoSample                    // Receives the sample or NULL.
 			), "Error reading video sample.");
 
@@ -301,16 +296,16 @@ int main()
 			//CHECK_HR(pStreamSink->ProcessSample(d3dSample), "Streamsink process sample failed.\n");
 		}
 
-		SafeRelease(&videoSample);
+		SAFE_RELEASE(&videoSample);
 	}
 
 done:
 
-	SafeRelease(_d3ddev);    // close and release the 3D device
-	SafeRelease(_d3d);    // close and release Direct3D
+	SAFE_RELEASE(_d3ddev);    // close and release the 3D device
+	SAFE_RELEASE(_d3d);    // close and release Direct3D
 
 	printf("finished.\n");
-	getchar();
+	auto c = getchar();
 
 	return 0;
 }
@@ -354,8 +349,8 @@ HRESULT CreateD3DSample(
 	(*ppVideoSample)->AddRef();
 
 done:
-	SafeRelease(&pSurface);
-	SafeRelease(&pSample);
+	SAFE_RELEASE(&pSurface);
+	SAFE_RELEASE(&pSample);
 	return hr;
 }
 
@@ -364,7 +359,7 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 	return DefWindowProc(hwnd, uMsg, wParam, lParam);
 }
 
-void InitializeWindow()
+DWORD InitializeWindow(LPVOID lpThreadParameter)
 {
 	WNDCLASS wc = { 0 };
 
@@ -408,4 +403,6 @@ void InitializeWindow()
 			}
 		}
 	}
+
+	return 0;
 }
