@@ -37,7 +37,7 @@
 #pragma comment(lib, "mfreadwrite.lib")
 #pragma comment(lib, "mfuuid.lib")
 
-// Function definitions.
+// Forward function definitions.
 DWORD InitializeWindow(LPVOID lpThreadParameter);
 
 // Constants 
@@ -49,12 +49,6 @@ HWND _hwnd;
 
 int main()
 {
-	CHECK_HR(CoInitializeEx(NULL, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE),
-		"COM initialisation failed.\n");
-
-	CHECK_HR(MFStartup(MF_VERSION),
-		"Media Foundation initialisation failed.\n");
-
 	IMFSourceResolver* pSourceResolver = NULL;
 	IUnknown* uSource = NULL;
 	IMFTopology *pTopology = NULL;
@@ -80,6 +74,12 @@ int main()
 		printf("Failed to initialise video window.\n");
 		goto done;
 	}
+
+	CHECK_HR(CoInitializeEx(NULL, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE),
+		"COM initialisation failed.");
+
+	CHECK_HR(MFStartup(MF_VERSION),
+		"Media Foundation initialisation failed.");
 
 	CHECK_HR(MFCreateSourceResolver(&pSourceResolver), 
 		"Failed to create source resolved.\n");
@@ -248,4 +248,3 @@ DWORD InitializeWindow(LPVOID lpThreadParameter)
 
 	return 0;
 }
-
