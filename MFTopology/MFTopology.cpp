@@ -37,6 +37,8 @@
 #pragma comment(lib, "mfreadwrite.lib")
 #pragma comment(lib, "mfuuid.lib")
 
+#define MEDIA_FILE_PATH L"../MediaFiles/big_buck_bunny.mp4"
+
 // Forward function definitions.
 DWORD InitializeWindow(LPVOID lpThreadParameter);
 
@@ -82,10 +84,10 @@ int main()
 		"Media Foundation initialisation failed.");
 
 	CHECK_HR(MFCreateSourceResolver(&pSourceResolver), 
-		"Failed to create source resolved.\n");
+		"Failed to create source resolved.");
 
 	CHECK_HR(pSourceResolver->CreateObjectFromURL(
-		L"../MediaFiles/big_buck_bunny.mp4",      // URL of the source.
+		MEDIA_FILE_PATH,													// URL of the source.
     MF_RESOLUTION_MEDIASOURCE,								// Create a source object.
 		NULL,																			// Optional property store.
 		&ObjectType,															// Receives the created object type. 
@@ -93,21 +95,21 @@ int main()
 		), "Failed to create media object from URL.\n");
 
 	CHECK_HR(MFCreateMediaSession(NULL, &pSession), 
-		"Failed to create media session.\n");
+		"Failed to create media session.");
 
 	CHECK_HR(MFCreateTopology(&pTopology), 
-		"Failed to create topology object.\n");
+		"Failed to create topology object.");
 
 	CHECK_HR(uSource->QueryInterface(IID_PPV_ARGS(&pSource)), 
-		"Failed to get media source.\n");
+		"Failed to get media source.");
 
 	// Add source node to topology.
 	CHECK_HR(pSource->CreatePresentationDescriptor(&pSourcePD), 
-		"Failed to create presentation descriptor from source.\n");
+		"Failed to create presentation descriptor from source.");
 
 	// Get the number of streams in the media source.
 	CHECK_HR(pSourcePD->GetStreamDescriptorCount(&sourceStreamCount), 
-		"Failed to get source stream count.\n");
+		"Failed to get source stream count.");
 		
 	printf("Source stream count %i.\n", sourceStreamCount); 
 
@@ -115,65 +117,59 @@ int main()
 	for (DWORD i = 0; i < sourceStreamCount; i++)
 	{
 		CHECK_HR(pSourcePD->GetStreamDescriptorByIndex(i, &fSelected, &pSourceSD), 
-			"Failed to get stream descriptor from presentation descriptor.\n");
+			"Failed to get stream descriptor from presentation descriptor.");
 
 		CHECK_HR(pSourceSD->GetMediaTypeHandler(&pHandler), 
-			"Failed to create media type handler from presentation descriptor.\n");
+			"Failed to create media type handler from presentation descriptor.");
 
 		GUID guidMajorType;
 		CHECK_HR(pHandler->GetMajorType(&guidMajorType), 
-			"Failed to get media type handler from source stream.\n");
+			"Failed to get media type handler from source stream.");
 
 		if (guidMajorType == MFMediaType_Audio)
 		{
 			printf("Creating audio renderer for stream index %i.\n", i);
 			CHECK_HR(MFCreateAudioRendererActivate(&pActivate), 
-				"Failed to create audio renderer activate object.\n");
+				"Failed to create audio renderer activate object.");
 		}
 		else if (guidMajorType == MFMediaType_Video)
 		{
 			printf("Creating video renderer for stream index %i.\n", i);
 			CHECK_HR(MFCreateVideoRendererActivate(_hwnd, &pActivate), 
-				"Failed to create video renderer activate object.\n");
+				"Failed to create video renderer activate object.");
 		}
 	}
 
 	// Creating and adding source node to topology.
-	CHECK_HR(MFCreateTopologyNode(MF_TOPOLOGY_SOURCESTREAM_NODE, &pSourceNode), "Failed to create source node.\n");
-	CHECK_HR(pSourceNode->SetUnknown(MF_TOPONODE_SOURCE, pSource), "Failed to set top node source on topology node.\n");
-	CHECK_HR(pSourceNode->SetUnknown(MF_TOPONODE_PRESENTATION_DESCRIPTOR, pSourcePD), "Failed to set presentation descriptor on topology node.\n");
-	CHECK_HR(pSourceNode->SetUnknown(MF_TOPONODE_STREAM_DESCRIPTOR, pSourceSD), "Failed to set stream descriptor on topology node.\n");
+	CHECK_HR(MFCreateTopologyNode(MF_TOPOLOGY_SOURCESTREAM_NODE, &pSourceNode), "Failed to create source node.");
+	CHECK_HR(pSourceNode->SetUnknown(MF_TOPONODE_SOURCE, pSource), "Failed to set top node source on topology node.");
+	CHECK_HR(pSourceNode->SetUnknown(MF_TOPONODE_PRESENTATION_DESCRIPTOR, pSourcePD), "Failed to set presentation descriptor on topology node.");
+	CHECK_HR(pSourceNode->SetUnknown(MF_TOPONODE_STREAM_DESCRIPTOR, pSourceSD), "Failed to set stream descriptor on topology node.");
 
 	CHECK_HR(pTopology->AddNode(pSourceNode), 
-		"Failed to add source node to topology.\n");
+		"Failed to add source node to topology.");
 
 	// Creating and adding output node to topology.
 	CHECK_HR(MFCreateTopologyNode(MF_TOPOLOGY_OUTPUT_NODE, &pOutputNode), 
-		"Failed to create sink node.\n");
+		"Failed to create sink node.");
 
 	CHECK_HR(pOutputNode->SetObject(pActivate), 
-		"Failed to set the activate object on the output node.\n");
+		"Failed to set the activate object on the output node.");
 
 	CHECK_HR(pOutputNode->SetUINT32(MF_TOPONODE_STREAMID, 0), 
-		"Failed to set the stream ID on the output node.\n");
+		"Failed to set the stream ID on the output node.");
 
 	CHECK_HR(pOutputNode->SetUINT32(MF_TOPONODE_NOSHUTDOWN_ON_REMOVE, FALSE), 
-		"Failed to set the no shutdown attribute on the output node.\n");
+		"Failed to set the no shutdown attribute on the output node.");
 
 	CHECK_HR(pTopology->AddNode(pOutputNode), 
-		"Failed to add output node to topology.\n");
+		"Failed to add output node to topology.");
 
 	CHECK_HR(pSourceNode->ConnectOutput(0, pOutputNode, 0), 
-		"Failed to connect the source node to the output node.\n");
+		"Failed to connect the source node to the output node.");
 
 	CHECK_HR(pSession->SetTopology(0, pTopology), 
-		"Failed to set the topology on the session.\n");
-
-	//CHECK_HR(pOutputNode->GetOutputPrefType(0, &pOutputNodeMediaType), "Failed to get the output node preferred media type.\n");
-	//CHECK_HR(pOutputNode->QueryInterface(IID_PPV_ARGS(&pOutputNodeMediaType)), "Failed to get an media type from the topology output node.\n");
-	//CHECK_HR(pOutputNode->QueryInterface(IID_PPV_ARGS(&pOutputSink)), "Failed to get an out sink from the topology output node.\n");
-	//CHECK_HR(pOutputNode->QueryInterface(IID_PPV_ARGS(&pHandler)), "Failed to get an out sink from the topology output node.\n");
-	//CHECK_HR(pActivate->QueryInterface(IID_PPV_ARGS(&pOutputNodeMediaType)), "Failed to get the activation object preferred media type.\n");
+		"Failed to set the topology on the session.");
 
 	PropVariantInit(&varStart);
 
