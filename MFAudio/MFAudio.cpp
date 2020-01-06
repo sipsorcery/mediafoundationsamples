@@ -213,7 +213,6 @@ HRESULT GetAudioDevice(UINT nDevice, IMFMediaSink** pSink)
   IMMDeviceCollection* pDevices = NULL;   // Audio device collection.
   IMMDevice* pDevice = NULL;              // An audio device.
   IMFAttributes* pAttributes = NULL;      // Attribute store.
-  //IMFMediaSink* pSink = NULL;             // Streaming audio renderer (SAR)
 
   LPWSTR wstrID = NULL;                   // Device ID.
 
@@ -246,7 +245,7 @@ HRESULT GetAudioDevice(UINT nDevice, IMFMediaSink** pSink)
   // Create an attribute store and set the device ID attribute.
   if (SUCCEEDED(hr))
   {
-    hr = MFCreateAttributes(&pAttributes, 2);
+    hr = MFCreateAttributes(&pAttributes, 1);
   }
 
   if (SUCCEEDED(hr))

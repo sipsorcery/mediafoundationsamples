@@ -3,8 +3,8 @@
 *
 * Description:
 * This file contains a C++ console application that is attempting to play the
-* video stream from a sample MP4 file or webcam using the Windows Media Foundation 
-* API. Specifically it's attempting to use the Enhanced Video Renderer 
+* video stream from a sample MP4 file or webcam using the Windows Media Foundation
+* API. Specifically it's attempting to use the Enhanced Video Renderer
 * (https://msdn.microsoft.com/en-us/library/windows/desktop/ms694916%28v=vs.85%29.aspx)
 * to playback the video.
 *
@@ -13,9 +13,8 @@
 *
 * History:
 * 01 Jan 2015	  Aaron Clauson	  Created, Hobart, Australia.
-* 15 Sep 2015   Aaron Clauson		Trying with webcam instead of file but still no idea 
+* 15 Sep 2015   Aaron Clauson		Trying with webcam instead of file but still no idea
 * 05 Jan 2020   Aaron Clauson   Applied Stack Overflow answer from https://bit.ly/2sQoMuP.
-*                               and finally for some video to display.
 *
 * License: Public Domain (no warranty, use at own risk)
 /******************************************************************************/
@@ -51,9 +50,13 @@
 #define VIDEO_WIDTH  640
 #define VIDEO_HEIGHT 480
 #define MEDIA_FILE_PATH L"../MediaFiles/big_buck_bunny.mp4"
+#define WEBCAM_DEVICE_INDEX 0	  // Adjust according to desired video capture device.
 
 // Forward function definitions.
 DWORD InitializeWindow(LPVOID lpThreadParameter);
+HRESULT GetVideoSourceFromFile(LPWSTR path, IMFSourceReader** ppVideoReader);
+HRESULT GetVideoSourceFromDevice(UINT nDevice, IMFSourceReader** ppVideoReader);
+HRESULT GetSupportedMediaType(IMFMediaTypeHandler* pSinkMediaTypeHandler, IMFMediaType** pMediaType);
 
 // Constants 
 const WCHAR CLASS_NAME[] = L"MFVideoEVR Window Class";
@@ -64,12 +67,8 @@ HWND _hwnd;
 
 int main()
 {
-  IMFSourceReader* videoReader = NULL;
+  IMFSourceReader* pVideoReader = NULL;
   IMFMediaType* videoSourceOutputType = NULL, * pvideoSourceModType = NULL;
-  IMFSourceResolver* pSourceResolver = NULL;
-  IUnknown* uSource = NULL;
-  IMFMediaSource* mediaFileSource = NULL;
-  IMFAttributes* pVideoReaderAttributes = NULL;
   IMFMediaType* pVideoOutType = NULL;
   IMFMediaSink* pVideoSink = NULL;
   IMFStreamSink* pStreamSink = NULL;
@@ -83,7 +82,6 @@ int main()
   IDirect3DDeviceManager9* pD3DManager = NULL;
   IMFVideoSampleAllocator* pVideoSampleAllocator = NULL;
   IMFSample* pD3DVideoSample = NULL;
-  MF_OBJECT_TYPE ObjectType = MF_OBJECT_INVALID;
   RECT rc = { 0, 0, VIDEO_WIDTH, VIDEO_HEIGHT };
 
   CHECK_HR(CoInitializeEx(NULL, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE),
@@ -92,6 +90,7 @@ int main()
   CHECK_HR(MFStartup(MF_VERSION),
     "Media Foundation initialisation failed.");
 
+  // Need the color converter DSP for conversions between YUV, RGB etc.
   CHECK_HR(MFTRegisterLocalByCLSID(
     __uuidof(CColorConvertDMO),
     MFT_CATEGORY_VIDEO_PROCESSOR,
@@ -100,8 +99,8 @@ int main()
     0,
     NULL,
     0,
-    NULL), 
-    "Error registering colour converter DSP.\n");
+    NULL),
+    "Error registering colour converter DSP.");
 
   // Create a separate Window and thread to host the Video player.
   CreateThread(NULL, 0, (LPTHREAD_START_ROUTINE)InitializeWindow, NULL, 0, NULL);
@@ -119,7 +118,7 @@ int main()
   }
 
   // Configure Enhanced Video Renderer sink and assign it to the Window we just created..
-  CHECK_HR(MFCreateVideoRendererActivate(_hwnd, &pActive), 
+  CHECK_HR(MFCreateVideoRendererActivate(_hwnd, &pActive),
     "Failed to created video rendered activation context.");
 
   CHECK_HR(pActive->ActivateObject(IID_IMFMediaSink, (void**)&pVideoSink),
@@ -127,50 +126,36 @@ int main()
 
   // Initialize the renderer before doing anything else including querying for other interfaces,
   // see https://msdn.microsoft.com/en-us/library/windows/desktop/ms704667(v=vs.85).aspx.
-  CHECK_HR(pVideoSink->QueryInterface(__uuidof(IMFVideoRenderer), (void**)&pVideoRenderer), 
+  CHECK_HR(pVideoSink->QueryInterface(__uuidof(IMFVideoRenderer), (void**)&pVideoRenderer),
     "Failed to get video Renderer interface from EVR media sink.");
 
-  CHECK_HR(pVideoRenderer->InitializeRenderer(NULL, NULL), 
+  CHECK_HR(pVideoRenderer->InitializeRenderer(NULL, NULL),
     "Failed to initialise the video renderer.");
 
-  CHECK_HR(pVideoSink->QueryInterface(__uuidof(IMFGetService), (void**)&pService), 
+  CHECK_HR(pVideoSink->QueryInterface(__uuidof(IMFGetService), (void**)&pService),
     "Failed to get service interface from EVR media sink.");
 
-  CHECK_HR(pService->GetService(MR_VIDEO_RENDER_SERVICE, __uuidof(IMFVideoDisplayControl), (void**)&pVideoDisplayControl), 
+  CHECK_HR(pService->GetService(MR_VIDEO_RENDER_SERVICE, __uuidof(IMFVideoDisplayControl), (void**)&pVideoDisplayControl),
     "Failed to get video display control interface from service interface.");
 
-  CHECK_HR(pVideoDisplayControl->SetVideoWindow(_hwnd), 
+  CHECK_HR(pVideoDisplayControl->SetVideoWindow(_hwnd),
     "Failed to SetVideoWindow.");
 
-  CHECK_HR(pVideoDisplayControl->SetVideoPosition(NULL, &rc), 
+  CHECK_HR(pVideoDisplayControl->SetVideoPosition(NULL, &rc),
     "Failed to SetVideoPosition.");
 
   // Set up the reader for the file.
-  CHECK_HR(MFCreateSourceResolver(&pSourceResolver), 
-    "MFCreateSourceResolver failed.");
 
-  CHECK_HR(pSourceResolver->CreateObjectFromURL(
-    MEDIA_FILE_PATH,            // URL of the source.
-    MF_RESOLUTION_MEDIASOURCE,  // Create a source object.
-    NULL,                       // Optional property store.
-    &ObjectType,                // Receives the created object type. 
-    &uSource),                  // Receives a pointer to the media source. 
-    "Failed to create media source resolver for file.");
+  CHECK_HR(GetVideoSourceFromFile(MEDIA_FILE_PATH, &pVideoReader),
+    "Failed to get file video source.");
+  //CHECK_HR(GetVideoSourceFromDevice(WEBCAM_DEVICE_INDEX, &pVideoReader),
+  //  "Failed to get webcam video source.");
 
-  CHECK_HR(uSource->QueryInterface(IID_PPV_ARGS(&mediaFileSource)), 
-    "Failed to create media file source.");
-
-  CHECK_HR(MFCreateAttributes(&pVideoReaderAttributes, 1),
-    "Failed to create attributes object for video reader.");
-  
-  CHECK_HR(pVideoReaderAttributes->SetUINT32(MF_SOURCE_READER_ENABLE_VIDEO_PROCESSING, 1),
-    "Failed to set enable video processing attribute type for reader config.");
-
-  CHECK_HR(MFCreateSourceReaderFromMediaSource(mediaFileSource, pVideoReaderAttributes, &videoReader),
-    "Error creating media source reader.");
-
-  CHECK_HR(videoReader->GetCurrentMediaType((DWORD)MF_SOURCE_READER_FIRST_VIDEO_STREAM, &videoSourceOutputType),
+  CHECK_HR(pVideoReader->GetCurrentMediaType((DWORD)MF_SOURCE_READER_FIRST_VIDEO_STREAM, &videoSourceOutputType),
     "Error retrieving current media type from first video stream.");
+
+  CHECK_HR(pVideoReader->SetStreamSelection((DWORD)MF_SOURCE_READER_FIRST_VIDEO_STREAM, TRUE),
+    "Failed to set the first video stream on the source reader.");
 
   std::cout << "Default output media type for source reader:" << std::endl;
   std::cout << GetMediaTypeDescription(videoSourceOutputType) << std::endl << std::endl;
@@ -185,17 +170,19 @@ int main()
   CHECK_HR(CopyAttribute(videoSourceOutputType, pvideoSourceModType, MF_MT_FRAME_SIZE), "Failed to copy video frame size attribute from input file to output sink.\n");
   CHECK_HR(CopyAttribute(videoSourceOutputType, pvideoSourceModType, MF_MT_FRAME_RATE), "Failed to copy video frame rate attribute from input file to output sink.\n");
 
-  CHECK_HR(videoReader->SetCurrentMediaType((DWORD)MF_SOURCE_READER_FIRST_VIDEO_STREAM, NULL, pvideoSourceModType), 
+  CHECK_HR(pVideoReader->SetCurrentMediaType((DWORD)MF_SOURCE_READER_FIRST_VIDEO_STREAM, NULL, pvideoSourceModType),
     "Failed to set output media type on source reader.");
 
   std::cout << "Output media type set on source reader:" << std::endl;
   std::cout << GetMediaTypeDescription(pvideoSourceModType) << std::endl << std::endl;
 
+  // Set up the media types for the sink writer.
+
   CHECK_HR(pVideoSink->GetStreamSinkByIndex(0, &pStreamSink),
     "Failed to get video renderer stream by index.");
 
-  CHECK_HR(pStreamSink->GetMediaTypeHandler(&pMediaTypeHandler), 
-    "Failed to get media type handler.");
+  CHECK_HR(pStreamSink->GetMediaTypeHandler(&pMediaTypeHandler),
+    "Failed to get media type handler for stream sink.");
 
   // Set the video input type on the EVR sink.
   CHECK_HR(MFCreateMediaType(&pVideoOutType), "Failed to create video output media type.\n");
@@ -207,11 +194,17 @@ int main()
   CHECK_HR(CopyAttribute(videoSourceOutputType, pVideoOutType, MF_MT_FRAME_SIZE), "Failed to copy video frame size attribute from input file to output sink.\n");
   CHECK_HR(CopyAttribute(videoSourceOutputType, pVideoOutType, MF_MT_FRAME_RATE), "Failed to copy video frame rate attribute from input file to output sink.\n");
 
-  CHECK_HR(pMediaTypeHandler->SetCurrentMediaType(pVideoOutType), 
+  //CHECK_HR(GetSupportedMediaType(pMediaTypeHandler, &pVideoOutType),
+  //  "Failed to get supported media type.");
+
+  std::cout << "Supported media type:" << std::endl;
+  std::cout << GetMediaTypeDescription(pVideoOutType) << std::endl << std::endl;
+
+  CHECK_HR(pMediaTypeHandler->SetCurrentMediaType(pVideoOutType),
     "Failed to set input media type on EVR sink.");
 
-  std::cout << "Input media type set on EVR:" << std::endl;
-  std::cout << GetMediaTypeDescription(pVideoOutType) << std::endl << std::endl;
+  //std::cout << "Input media type set on EVR:" << std::endl;
+  //std::cout << GetMediaTypeDescription(pVideoOutType) << std::endl << std::endl;
 
   // Get Direct3D surface organised.
   // https://msdn.microsoft.com/fr-fr/library/windows/desktop/aa473823(v=vs.85).aspx
@@ -241,7 +234,7 @@ int main()
 
   while (true)
   {
-    CHECK_HR(videoReader->ReadSample(
+    CHECK_HR(pVideoReader->ReadSample(
       MF_SOURCE_READER_FIRST_VIDEO_STREAM,
       0,                              // Flags.
       &streamIndex,                   // Receives the actual stream index. 
@@ -306,13 +299,9 @@ done:
   printf("finished.\n");
   auto c = getchar();
 
-  SAFE_RELEASE(videoReader);
+  SAFE_RELEASE(pVideoReader);
   SAFE_RELEASE(videoSourceOutputType);
   SAFE_RELEASE(pvideoSourceModType);
-  SAFE_RELEASE(pSourceResolver);
-  SAFE_RELEASE(uSource);
-  SAFE_RELEASE(mediaFileSource);
-  SAFE_RELEASE(pVideoReaderAttributes);
   SAFE_RELEASE(pVideoOutType);
   SAFE_RELEASE(pVideoSink);
   SAFE_RELEASE(pStreamSink);
@@ -328,6 +317,149 @@ done:
   SAFE_RELEASE(pD3DVideoSample);
 
   return 0;
+}
+
+/**
+* Iterates the sink media's available type in an attempt to find
+* one it is happy with,
+* @param[in] SinkMediaTypeHandler: the sink media handler to find a matching media type for.
+* @param[out] ppMediaType: will be set with a media type if successful.
+* @@Returns S_OK if successful or an error code if not.
+*/
+HRESULT GetSupportedMediaType(IMFMediaTypeHandler* pSinkMediaTypeHandler, IMFMediaType** ppMediaType)
+{
+  IMFMediaType* pSupportedType = NULL;
+  DWORD sourceMediaTypeCount = 0;
+  HRESULT hr = S_OK;
+
+  hr = pSinkMediaTypeHandler->GetMediaTypeCount(&sourceMediaTypeCount);
+  CHECK_HR(hr, "Error getting sink media type count.");
+
+  // Find a media type that the sink and its writer support.
+  for (UINT i = 0; i < sourceMediaTypeCount; i++)
+  {
+    hr = pSinkMediaTypeHandler->GetMediaTypeByIndex(i, &pSupportedType);
+    CHECK_HR(hr, "Error getting media type from sink media type handler.");
+
+    std::cout << GetMediaTypeDescription(pSupportedType) << std::endl;
+
+    if (pSinkMediaTypeHandler->IsMediaTypeSupported(pSupportedType, NULL) == S_OK) {
+      std::cout << "Matching media type found." << std::endl;
+      ppMediaType = &pSupportedType;
+      break;
+    }
+    else {
+      std::cout << "Source media type does not match." << std::endl;
+      SAFE_RELEASE(pSupportedType);
+    }
+  }
+
+done:
+  return hr;
+}
+
+/**
+* Gets a video source reader from a media file.
+* @param[in] path: the media file path to get the source reader for.
+* @param[out] ppVideoReader: will be set with the reader if successful.
+* @@Returns S_OK if successful or an error code if not.
+*/
+HRESULT GetVideoSourceFromFile(LPWSTR path, IMFSourceReader** ppVideoReader)
+{
+  IMFSourceResolver* pSourceResolver = NULL;
+  IUnknown* uSource = NULL;
+  IMFMediaSource* mediaFileSource = NULL;
+  IMFAttributes* pVideoReaderAttributes = NULL;
+  MF_OBJECT_TYPE ObjectType = MF_OBJECT_INVALID;
+
+  HRESULT hr = S_OK;
+
+  hr = MFCreateSourceResolver(&pSourceResolver);
+  CHECK_HR(hr, "MFCreateSourceResolver failed.");
+
+  hr = pSourceResolver->CreateObjectFromURL(
+    path,                       // URL of the source.
+    MF_RESOLUTION_MEDIASOURCE,  // Create a source object.
+    NULL,                       // Optional property store.
+    &ObjectType,                // Receives the created object type. 
+    &uSource                    // Receives a pointer to the media source. 
+  );
+  CHECK_HR(hr, "Failed to create media source resolver for file.");
+
+  hr = uSource->QueryInterface(IID_PPV_ARGS(&mediaFileSource));
+  CHECK_HR(hr, "Failed to create media file source.");
+
+  hr = MFCreateAttributes(&pVideoReaderAttributes, 1);
+  CHECK_HR(hr, "Failed to create attributes object for video reader.");
+
+  hr = pVideoReaderAttributes->SetUINT32(MF_SOURCE_READER_ENABLE_VIDEO_PROCESSING, 1);
+  CHECK_HR(hr, "Failed to set enable video processing attribute type for reader config.");
+
+  hr = MFCreateSourceReaderFromMediaSource(mediaFileSource, pVideoReaderAttributes, ppVideoReader);
+  CHECK_HR(hr, "Error creating media source reader.");
+
+done:
+
+  SAFE_RELEASE(pSourceResolver);
+  SAFE_RELEASE(uSource);
+  SAFE_RELEASE(mediaFileSource);
+  SAFE_RELEASE(pVideoReaderAttributes);
+
+  return hr;
+}
+
+/**
+* Gets a video source reader from a device such as a webcam.
+* @param[in] nDevice: the video device index to attempt to get the source reader for.
+* @param[out] ppVideoReader: will be set with the reader if successful.
+* @@Returns S_OK if successful or an error code if not.
+*/
+HRESULT GetVideoSourceFromDevice(UINT nDevice, IMFSourceReader** ppVideoReader)
+{
+  IMFMediaSource* videoSource = NULL;
+  UINT32 videoDeviceCount = 0;
+  IMFAttributes* videoConfig = NULL;
+  IMFActivate** videoDevices = NULL;
+  WCHAR* webcamFriendlyName;
+  UINT nameLength = 0;
+
+  HRESULT hr = S_OK;
+
+  // Get the first available webcam.
+  hr = MFCreateAttributes(&videoConfig, 1);
+  CHECK_HR(hr, "Error creating video configuation.");
+
+  // Request video capture devices.
+  hr = videoConfig->SetGUID(
+    MF_DEVSOURCE_ATTRIBUTE_SOURCE_TYPE,
+    MF_DEVSOURCE_ATTRIBUTE_SOURCE_TYPE_VIDCAP_GUID);
+  CHECK_HR(hr, "Error initialising video configuration object.");
+
+  hr = MFEnumDeviceSources(videoConfig, &videoDevices, &videoDeviceCount);
+  CHECK_HR(hr, "Error enumerating video devices.");
+
+  hr = videoDevices[nDevice]->GetAllocatedString(MF_DEVSOURCE_ATTRIBUTE_FRIENDLY_NAME, &webcamFriendlyName, &nameLength);
+  CHECK_HR(hr, "Error retrieving vide device friendly name.\n");
+
+  wprintf(L"First available webcam: %s\n", webcamFriendlyName);
+
+  hr = videoDevices[nDevice]->ActivateObject(IID_PPV_ARGS(&videoSource));
+  CHECK_HR(hr, "Error activating video device.");
+
+  // Create a source reader.
+  hr = MFCreateSourceReaderFromMediaSource(
+    videoSource,
+    videoConfig,
+    ppVideoReader);
+  CHECK_HR(hr, "Error creating video source reader.");
+
+done:
+
+  SAFE_RELEASE(videoSource);
+  SAFE_RELEASE(videoConfig);
+  SAFE_RELEASE(videoDevices);
+
+  return hr;
 }
 
 /**
