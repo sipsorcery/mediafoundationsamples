@@ -17,7 +17,7 @@
 * History:
 * 01 Jan 2015	  Aaron Clauson	  Created, Hobart, Australia.
 * 15 Sep 2015   Aaron Clauson		Trying with webcam instead of file but still not working.
-* 05 Jan 2020   Aaron Clauson   Applied Stack Overflow answer from https://bit.ly/2sQoMuP, now works for file.
+* 05 Jan 2020   Aaron Clauson   Applied Stack Overflow answer from https://bit.ly/2sQoMuP, now works for a file source.
 *
 * License: Public Domain (no warranty, use at own risk)
 /******************************************************************************/
