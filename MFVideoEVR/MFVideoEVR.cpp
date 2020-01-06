@@ -8,6 +8,9 @@
 * (https://msdn.microsoft.com/en-us/library/windows/desktop/ms694916%28v=vs.85%29.aspx)
 * to playback the video.
 *
+* Status:
+* File (mp4) source working. Webcam source not working.
+*
 * Author:
 * Aaron Clauson (aaron@sipsorcery.com)
 *
