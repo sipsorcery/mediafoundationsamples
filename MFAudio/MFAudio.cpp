@@ -1,10 +1,10 @@
 /******************************************************************************
 * Filename: MFAudio.cpp
-* 
+*
 * Description:
 * This file contains a C++ console application that plays the audio stream from
-* a sample file using the Windows Media Foundation API. Specifically it's 
-* attempting to use the Streaming Audio Renderer 
+* a sample file using the Windows Media Foundation API. Specifically it's
+* attempting to use the Streaming Audio Renderer
 * (https://msdn.microsoft.com/en-us/library/windows/desktop/aa369729%28v=vs.85%29.aspx).
 *
 * Author:
@@ -64,8 +64,8 @@ int main()
 
   // Source.
   CHECK_HR(MFCreateSourceReaderFromURL(
-    MEDIA_FILE_PATH, 
-    NULL, 
+    MEDIA_FILE_PATH,
+    NULL,
     &pSourceReader),
     "Failed to create source reader from file.");
 
@@ -81,10 +81,10 @@ int main()
   CHECK_HR(GetAudioDevice(AUDIO_DEVICE_INDEX, &pAudioSink),
     "Failed to get audio renderer device.");
 
-  CHECK_HR(pAudioSink->GetStreamSinkByIndex(0, &pStreamSink), 
+  CHECK_HR(pAudioSink->GetStreamSinkByIndex(0, &pStreamSink),
     "Failed to get audio renderer stream by index.");
 
-  CHECK_HR(pStreamSink->GetMediaTypeHandler(&pSinkMediaTypeHandler), 
+  CHECK_HR(pStreamSink->GetMediaTypeHandler(&pSinkMediaTypeHandler),
     "Failed to get media type handler.");
 
   CHECK_HR(pSinkMediaTypeHandler->GetMediaTypeCount(&sinkMediaTypeCount),
@@ -204,7 +204,7 @@ done:
 * @param[in] nDevice: the audio device index to attempt to get the sink for.
 * @param[out] pSink: the audio device sink.
 * @@Returns S_OK if successful or an error code if not.
-*/ 
+*/
 HRESULT GetAudioDevice(UINT nDevice, IMFMediaSink** pSink)
 {
   HRESULT hr = S_OK;
@@ -274,7 +274,7 @@ HRESULT GetAudioDevice(UINT nDevice, IMFMediaSink** pSink)
 }
 
 /**
-* Prints out a list of the aduio output (rendering) devices available.
+* Prints out a list of the audio output (rendering) devices available.
 * @@Returns S_OK if successful or an error code if not.
 *
 * Remarks:
@@ -290,39 +290,41 @@ HRESULT ListAudioOutputDevices()
   LPWSTR pwstrID = NULL;                   // Device ID.
   UINT audioDeviceCount = 0;
 
+  HRESULT hr = S_OK;
+
   // Create the device enumerator.
-  CHECK_HR(CoCreateInstance(
+  hr = CoCreateInstance(
     __uuidof(MMDeviceEnumerator),
     NULL,
     CLSCTX_ALL,
     __uuidof(IMMDeviceEnumerator),
-    (void**)&pEnum),
-    "Failed to create device enumerator.");
+    (void**)&pEnum);
+  CHECK_HR(hr, "Failed to create device enumerator.");
 
   // Enumerate the rendering devices.
-  CHECK_HR(pEnum->EnumAudioEndpoints(eRender, DEVICE_STATE_ACTIVE, &pDevices),
-    "Failed to enumerate audio endpoints.");
+  hr = pEnum->EnumAudioEndpoints(eRender, DEVICE_STATE_ACTIVE, &pDevices);
+  CHECK_HR(hr, "Failed to enumerate audio endpoints.");
 
-  CHECK_HR(pDevices->GetCount(&audioDeviceCount),
-    "Failed to get the audio device count.");
+  hr = pDevices->GetCount(&audioDeviceCount);
+  CHECK_HR(hr, "Failed to get the audio device count.");
 
   wprintf(L"Audio device count %d.\n", audioDeviceCount);
 
   for (UINT i = 0; i < audioDeviceCount; i++) {
-    CHECK_HR(pDevices->Item(i, &pAudioDev),
-      "Failed to get audio device pointer.");
+    hr = pDevices->Item(i, &pAudioDev);
+    CHECK_HR(hr, "Failed to get audio device pointer.");
 
-    CHECK_HR(pAudioDev->OpenPropertyStore(STGM_READ, &pProps),
-      "Failed to open audio device property store.");
+    hr = pAudioDev->OpenPropertyStore(STGM_READ, &pProps);
+    CHECK_HR(hr,"Failed to open audio device property store.");
 
-    CHECK_HR(pAudioDev->GetId(&pwstrID),
-      "Failed to get audio device ID.");
+    hr = pAudioDev->GetId(&pwstrID);
+    CHECK_HR(hr, "Failed to get audio device ID.");
 
     PROPVARIANT varName;
     PropVariantInit(&varName);
 
-    CHECK_HR(pProps->GetValue(PKEY_Device_FriendlyName, &varName),
-      "Failed to get audio device friendly name");
+    hr = pProps->GetValue(PKEY_Device_FriendlyName, &varName);
+    CHECK_HR(hr, "Failed to get audio device friendly name");
 
     // Print endpoint friendly name and endpoint ID.
     printf("Endpoint %d: \"%S\" (%S)\n", i, varName.pwszVal, pwstrID);
@@ -336,5 +338,5 @@ done:
   SAFE_RELEASE(pProps);
   CoTaskMemFree(pwstrID);
 
-  return S_OK;
+  return hr;
 }

@@ -72,6 +72,7 @@ int main()
   IMFMediaType* pVideoOutType = NULL;
   IMFMediaSink* pVideoSink = NULL;
   IMFStreamSink* pStreamSink = NULL;
+  IMFSinkWriter* pSinkWriter = NULL;
   IMFMediaTypeHandler* pMediaTypeHandler = NULL;
   IMFVideoRenderer* pVideoRenderer = NULL;
   IMFVideoDisplayControl* pVideoDisplayControl = NULL;
@@ -89,6 +90,9 @@ int main()
 
   CHECK_HR(MFStartup(MF_VERSION),
     "Media Foundation initialisation failed.");
+
+  //CHECK_HR(ListCaptureDevices(DeviceType::Video), 
+  //  "Error listing video capture devices.");
 
   // Need the color converter DSP for conversions between YUV, RGB etc.
   CHECK_HR(MFTRegisterLocalByCLSID(
@@ -117,6 +121,7 @@ int main()
     goto done;
   }
 
+  // ---- Renderer ----
   // Configure Enhanced Video Renderer sink and assign it to the Window we just created..
   CHECK_HR(MFCreateVideoRendererActivate(_hwnd, &pActive),
     "Failed to created video rendered activation context.");
@@ -144,7 +149,8 @@ int main()
   CHECK_HR(pVideoDisplayControl->SetVideoPosition(NULL, &rc),
     "Failed to SetVideoPosition.");
 
-  // Set up the reader for the file.
+  // ---- Source ----
+  // Set up the reader for the file/webcam.
 
   CHECK_HR(GetVideoSourceFromFile(MEDIA_FILE_PATH, &pVideoReader),
     "Failed to get file video source.");
@@ -176,7 +182,7 @@ int main()
   std::cout << "Output media type set on source reader:" << std::endl;
   std::cout << GetMediaTypeDescription(pvideoSourceModType) << std::endl << std::endl;
 
-  // Set up the media types for the sink writer.
+  // ----- Connect source to renderer.
 
   CHECK_HR(pVideoSink->GetStreamSinkByIndex(0, &pStreamSink),
     "Failed to get video renderer stream by index.");
@@ -231,6 +237,10 @@ int main()
   LONGLONG llTimeStamp;
   UINT32 uiAttribute = 0;
   DWORD dwBuffer = 0;
+
+  // Can a sink writer be used instead of needing to mess with Direct3D surfaces?
+  //CHECK_HR(MFCreateSinkWriterFromMediaSink(pVideoSink, NULL, &pSinkWriter),
+  //  "Failed to create sink writer for EVR stream sink.");
 
   while (true)
   {
@@ -305,6 +315,7 @@ done:
   SAFE_RELEASE(pVideoOutType);
   SAFE_RELEASE(pVideoSink);
   SAFE_RELEASE(pStreamSink);
+  SAFE_RELEASE(pSinkWriter);
   SAFE_RELEASE(pMediaTypeHandler);
   SAFE_RELEASE(pVideoRenderer);
   SAFE_RELEASE(pVideoDisplayControl);

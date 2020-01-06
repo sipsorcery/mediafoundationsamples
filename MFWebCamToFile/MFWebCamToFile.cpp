@@ -53,6 +53,7 @@ int main()
 	IMFSinkWriter *pWriter;
 	IMFMediaType *pVideoOutType = NULL;
 	DWORD writerVideoStreamIndex = 0;
+	UINT webcamNameLength = 0;
 
 	CHECK_HR(CoInitializeEx(NULL, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE),
 		"COM initialisation failed.");
@@ -73,7 +74,7 @@ int main()
 	CHECK_HR(MFEnumDeviceSources(videoConfig, &videoDevices, &videoDeviceCount),
 		"Error enumerating video devices.\n");
 
-	CHECK_HR(videoDevices[WEBCAM_DEVICE_INDEX]->GetAllocatedString(MF_DEVSOURCE_ATTRIBUTE_FRIENDLY_NAME, &webcamFriendlyName, NULL),
+	CHECK_HR(videoDevices[WEBCAM_DEVICE_INDEX]->GetAllocatedString(MF_DEVSOURCE_ATTRIBUTE_FRIENDLY_NAME, &webcamFriendlyName, &webcamNameLength),
 		"Error retrieving vide device friendly name.\n");
 
 	wprintf(L"First available webcam: %s\n", webcamFriendlyName);
