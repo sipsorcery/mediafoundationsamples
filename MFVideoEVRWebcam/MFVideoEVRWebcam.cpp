@@ -10,9 +10,6 @@
 * is that the webcam and the EVR can potentially have different pixel formats and 
 * require a colour conversion transform between the source and sink.
 *
-* Status:
-* Not working.
-*
 * Author:
 * Aaron Clauson (aaron@sipsorcery.com)
 *
@@ -22,7 +19,7 @@
 * 05 Jan 2020   Aaron Clauson   Applied Stack Overflow answer from https://bit.ly/2sQoMuP, 
 *                               now works for a file source.
 * 07 Jan 2020   Aaron Clauson   Split from MFVideoEVR sample. File and webcam sources
-*                               require different treatment large enough to warrant new sample.
+*                               require different treatment, large enough to warrant new sample.
 *
 * License: Public Domain (no warranty, use at own risk)
 /******************************************************************************/
@@ -97,7 +94,7 @@ int main()
   BOOL fSelected = false;
 
   IUnknown* colorConvTransformUnk = NULL;
-  IMFTransform* pColorConvTransform = NULL; // This is colour converter MFT is used to convert between RGB32 and RGB24.
+  IMFTransform* pColorConvTransform = NULL; // This is colour converter MFT is used to convert between the webcam pixel format and RGB32.
   IMFMediaType* pDecInputMediaType = NULL, * pDecOutputMediaType = NULL;
   IMFMediaType* pWebcamSourceType = NULL;
 
@@ -107,8 +104,8 @@ int main()
   CHECK_HR(MFStartup(MF_VERSION),
     "Media Foundation initialisation failed.");
 
-  //CHECK_HR(ListCaptureDevices(DeviceType::Video), 
-  //  "Error listing video capture devices.");
+  /*CHECK_HR(ListCaptureDevices(DeviceType::Video), 
+    "Error listing video capture devices.");*/
 
   // Need the color converter DSP for conversions between YUV, RGB etc.
   CHECK_HR(MFTRegisterLocalByCLSID(
@@ -216,11 +213,12 @@ int main()
   CHECK_HR(MFSetAttributeRatio(pImfEvrSinkType, MF_MT_PIXEL_ASPECT_RATIO, 1, 1), "Failed to set pixel aspect ratio attribute on media type.");
   CHECK_HR(MFSetAttributeSize(pImfEvrSinkType, MF_MT_FRAME_SIZE, VIDEO_WIDTH, VIDEO_HEIGHT), "Failed to set the frame size attribute on media type.");
   CHECK_HR(MFSetAttributeSize(pImfEvrSinkType, MF_MT_FRAME_RATE, VIDEO_FRAME_RATE, 1), "Failed to set the frame rate attribute on media type.");
+  CHECK_HR(CopyAttribute(videoSourceOutputType, pImfEvrSinkType, MF_MT_DEFAULT_STRIDE), "Failed to copy default stride attribute.");
 
-  // My webcam supports the same media type as the EVR input type excpet for the pixel format.
+  // My webcam supports the same media type as the EVR input type except for the pixel format.
   CHECK_HR(MFCreateMediaType(&pWebcamSourceType), "Failed to create webcam output media type.");
   CHECK_HR(pImfEvrSinkType->CopyAllItems(pWebcamSourceType), "Error copying media type attributes from EVR input to webcam output media type.");
-  CHECK_HR(pWebcamSourceType->SetGUID(MF_MT_SUBTYPE, MFVideoFormat_RGB24), "Failed to set video sub-type attribute on webcam media type.");
+  CHECK_HR(CopyAttribute(videoSourceOutputType, pWebcamSourceType, MF_MT_SUBTYPE), "Failed to set video sub-type attribute on webcam media type.");
 
   CHECK_HR(pSinkMediaTypeHandler->SetCurrentMediaType(pImfEvrSinkType),
     "Failed to set input media type on EVR sink.");
@@ -231,7 +229,7 @@ int main()
   std::cout << "EVR input media type defined as:" << std::endl;
   std::cout << GetMediaTypeDescription(pImfEvrSinkType) << std::endl << std::endl;
 
-  // ----- Create an MFT to convert between RGB24 and RGB32. -----
+  // ----- Create an MFT to convert between webcam pixel format and RGB32. -----
 
   CHECK_HR(CoCreateInstance(CLSID_CColorConvertDMO, NULL, CLSCTX_INPROC_SERVER,
     IID_IUnknown, (void**)&colorConvTransformUnk),
@@ -326,6 +324,7 @@ int main()
 
       //printf("Attempting to convert sample, sample duration %llu, sample time %llu, evr timestamp %llu.\n", sampleDuration, llTimeStamp, evrTimestamp);
 
+      // Relies on the webcam pixel format being RGB24.
       //CreateBitmapFromSample(L"capture_premft.bmp", VIDEO_WIDTH, VIDEO_HEIGHT, 24, videoSample);
 
       // ----- Apply colour conversion transfrom. -----

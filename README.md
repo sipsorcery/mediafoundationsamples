@@ -16,7 +16,7 @@ A set of minimal sample apps that demonstrate how to use certain parts of Micros
  
  - MFVideoEVR - **Working**. Display video from an mp4 file in Window WITHOUT using a topology. Write samples to video renderer directly from buffer.
  
- - MFVideoEVRWebcam - **Not Working**. Same as the `MFVideoEVR` sample but replacing the file source with a webcam.  
+ - MFVideoEVRWebcam - **Working**. Same as the `MFVideoEVR` sample but replacing the file source with a webcam.  
  
  - WpfMediaUWA - **Working**. Initial foray into how Media Foundation can work with WPF in a Universal Windows Application (UWA). UWA is currently impractical due to [deployment contraints](https://docs.microsoft.com/en-us/windows/apps/desktop/choose-your-platform), i.e. Windows Store only. Hopefully in 2020 with the introduction of [Windows UI 3.0](https://docs.microsoft.com/en-us/uwp/toolkits/) using the types of controls in this sample will become practical.
  
