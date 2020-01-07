@@ -8,7 +8,6 @@
 * (https://msdn.microsoft.com/en-us/library/windows/desktop/ms694916%28v=vs.85%29.aspx)
 * to playback the video.
 *
-*
 * Author:
 * Aaron Clauson (aaron@sipsorcery.com)
 *
@@ -204,7 +203,6 @@ int main()
   CHECK_HR(MFSetAttributeRatio(pImfEvrSinkType, MF_MT_PIXEL_ASPECT_RATIO, 1, 1), "Failed to set pixel aspect ratio attribute on media type.");
   CHECK_HR(CopyAttribute(videoSourceOutputType, pImfEvrSinkType, MF_MT_FRAME_SIZE), "Failed to copy video frame size attribute to media type.");
   CHECK_HR(CopyAttribute(videoSourceOutputType, pImfEvrSinkType, MF_MT_FRAME_RATE), "Failed to copy video frame rate attribute to media type.");
-
   CHECK_HR(pSinkMediaTypeHandler->SetCurrentMediaType(pImfEvrSinkType),
     "Failed to set input media type on EVR sink.");
 
