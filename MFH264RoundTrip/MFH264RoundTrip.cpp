@@ -7,11 +7,11 @@
 * Transform (MFT) and then uses the reverse H264 decoder MFT transform to get back
 * the raw image frames.
 *
-* Status: Not Working.
-*
 * To convert the raw yuv data dumped at the end of this sample use the ffmpeg command below:
 * ffmpeg -vcodec rawvideo -s 640x480 -pix_fmt yuv420p -i rawframes.yuv -vframes 1 output.jpeg
 * ffmpeg -vcodec rawvideo -s 640x480 -pix_fmt yuv420p -i rawframes.yuv out.avi
+*
+* Status: Not Working.
 *
 * Author:
 * Aaron Clauson (aaron@sipsorcery.com)
@@ -170,7 +170,7 @@ int _tmain(int argc, _TCHAR* argv[])
 		goto done;
 	}
 
-	CHECK_HR(pTransform->ProcessMessage(MFT_MESSAGE_COMMAND_FLUSH, NULL), "Failed to process FLUSH command on H.264 MFT.\n");
+	//CHECK_HR(pTransform->ProcessMessage(MFT_MESSAGE_COMMAND_FLUSH, NULL), "Failed to process FLUSH command on H.264 MFT.\n");
 	CHECK_HR(pTransform->ProcessMessage(MFT_MESSAGE_NOTIFY_BEGIN_STREAMING, NULL), "Failed to process BEGIN_STREAMING command on H.264 MFT.\n");
 	CHECK_HR(pTransform->ProcessMessage(MFT_MESSAGE_NOTIFY_START_OF_STREAM, NULL), "Failed to process START_OF_STREAM command on H.264 MFT.\n");
 
@@ -194,7 +194,7 @@ int _tmain(int argc, _TCHAR* argv[])
 		goto done;
 	}
 
-	CHECK_HR(pDecoderTransform->ProcessMessage(MFT_MESSAGE_COMMAND_FLUSH, NULL), "Failed to process FLUSH command on H.264 decoder MFT.\n");
+	//CHECK_HR(pDecoderTransform->ProcessMessage(MFT_MESSAGE_COMMAND_FLUSH, NULL), "Failed to process FLUSH command on H.264 decoder MFT.\n");
 	CHECK_HR(pDecoderTransform->ProcessMessage(MFT_MESSAGE_NOTIFY_BEGIN_STREAMING, NULL), "Failed to process BEGIN_STREAMING command on H.264 decoder MFT.\n");
 	CHECK_HR(pDecoderTransform->ProcessMessage(MFT_MESSAGE_NOTIFY_START_OF_STREAM, NULL), "Failed to process START_OF_STREAM command on H.264 decoder MFT.\n");
 
@@ -239,29 +239,29 @@ int _tmain(int argc, _TCHAR* argv[])
 		{
 			printf("Sample %i.\n", sampleCount);
 
-			CHECK_HR(videoSample->SetSampleTime(llVideoTimeStamp), "Error setting the video sample time.\n");
-			CHECK_HR(videoSample->GetSampleDuration(&llSampleDuration), "Error getting video sample duration.\n");
+			CHECK_HR(videoSample->SetSampleTime(llVideoTimeStamp), "Error setting the video sample time.");
+			CHECK_HR(videoSample->GetSampleDuration(&llSampleDuration), "Error getting video sample duration.");
 
-			printf("Passing sample to the H264 encoder with sample time %l.\n", llVideoTimeStamp);
+			printf("Passing sample to the H264 encoder with sample time %I64d.\n", llVideoTimeStamp);
 
 			// Pass the video sample to the H.264 transform.
-			CHECK_HR(pTransform->ProcessInput(0, videoSample, 0), "The H264 encoder ProcessInput call failed.\n");
+			CHECK_HR(pTransform->ProcessInput(0, videoSample, 0), "The H264 encoder ProcessInput call failed.");
 
-			CHECK_HR(pTransform->GetOutputStatus(&mftEncFlags), "H264 MFT GetOutputStatus failed.\n");
+			CHECK_HR(pTransform->GetOutputStatus(&mftEncFlags), "H264 MFT GetOutputStatus failed.");
 
-			if (mftEncFlags == MFT_OUTPUT_STATUS_SAMPLE_READY)
-			{
-				CHECK_HR(pTransform->GetOutputStreamInfo(0, &StreamInfo), "Failed to get output stream info from H264 MFT.\n");
+			//if (mftEncFlags == MFT_OUTPUT_STATUS_SAMPLE_READY)
+			//{
+				CHECK_HR(pTransform->GetOutputStreamInfo(0, &StreamInfo), "Failed to get output stream info from H264 MFT.");
 
 				while (true)
 				{
-					CHECK_HR(MFCreateSample(&mftEncSample), "Failed to create MF sample.\n");
+					CHECK_HR(MFCreateSample(&mftEncSample), "Failed to create MF sample.");
 
 					// The buffer created with the call below is reference counted and automatically released,
 					// see (https://msdn.microsoft.com/en-us/library/windows/desktop/bb530123(v=vs.85).aspx).
-					CHECK_HR(MFCreateMemoryBuffer(StreamInfo.cbSize, &encBuffer), "Failed to create memory buffer.\n"); 
+					CHECK_HR(MFCreateMemoryBuffer(StreamInfo.cbSize, &encBuffer), "Failed to create memory buffer."); 
 
-					CHECK_HR(mftEncSample->AddBuffer(encBuffer), "Failed to add sample to buffer.\n");
+					CHECK_HR(mftEncSample->AddBuffer(encBuffer), "Failed to add sample to buffer.");
 					encDataBuffer.dwStreamID = 0;
 					encDataBuffer.dwStatus = 0;
 					encDataBuffer.pEvents = NULL;
@@ -324,13 +324,18 @@ int _tmain(int argc, _TCHAR* argv[])
 									break;
 								}
 							}
+
+							if(mftDecProcessOutput == MF_E_TRANSFORM_NEED_MORE_INPUT)
+							{
+								break;
+							}
 						//}
 					}
 					else {
 						break;
 					}
 				}
-			}
+			//}
 		}
 
 		sampleCount++;
