@@ -49,6 +49,7 @@
 #define BITMAP_HEIGHT 480
 #define SAMPLE_DURATION 10000000 // 10^7 corresponds to 1 second.
 #define SAMPLE_COUNT 10
+#define BITMAP_FRAME_RATE 1
 
 // Forward function definitions.
 DWORD InitializeWindow(LPVOID lpThreadParameter);
@@ -166,6 +167,7 @@ int main()
   CHECK_HR(pImfEvrSinkType->SetUINT32(MF_MT_ALL_SAMPLES_INDEPENDENT, TRUE), "Failed to set independent samples attribute on media type.");
   CHECK_HR(MFSetAttributeRatio(pImfEvrSinkType, MF_MT_PIXEL_ASPECT_RATIO, 1, 1), "Failed to set pixel aspect ratio attribute on media type.");
   CHECK_HR(MFSetAttributeSize(pImfEvrSinkType, MF_MT_FRAME_SIZE, BITMAP_WIDTH, BITMAP_HEIGHT), "Failed to set the frame size attribute on media type.");
+  CHECK_HR(MFSetAttributeSize(pImfEvrSinkType, MF_MT_FRAME_RATE, BITMAP_FRAME_RATE, 1), "Failed to set the frame rate attribute on media type.");
 
   std::cout << "EVR input media type defined as:" << std::endl;
   std::cout << GetMediaTypeDescription(pImfEvrSinkType) << std::endl << std::endl;
@@ -291,7 +293,7 @@ int main()
 
     auto mftHr = pColorConvTransform->ProcessOutput(0, 1, &mftOutBuffer, &mftStatus);
 
-    printf("Colour conversion result %.2X, output status %.2X.\n", mftHr, mftStatus);
+    printf("Colour conversion result %.2X, MFT status %.2X.\n", mftHr, mftStatus);
 
     if (mftHr == S_OK)
     {

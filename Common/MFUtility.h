@@ -400,15 +400,16 @@ std::string GetMediaTypeDescription(IMFMediaType* pMediaType)
 
       if (guidId == MF_MT_FRAME_SIZE)
       {
-        //tempStr.Format("W %u, H: %u", HI32(Val), LO32(Val));
-        //description += String::Format("W:{0} H:{1}", HI32(Val), LO32(Val));
         description += "W:" + std::to_string(HI32(Val)) + " H: " + std::to_string(LO32(Val));
       }
-      else if ((guidId == MF_MT_FRAME_RATE) || (guidId == MF_MT_PIXEL_ASPECT_RATIO))
+      else if (guidId == MF_MT_FRAME_RATE)
       {
-        //tempStr.Format("W %u, H: %u", HI32(Val), LO32(Val));
-        //description += String::Format("W:{0} H:{1}", HI32(Val), LO32(Val));
-        description += "W:" + std::to_string(HI32(Val)) + " H: " + std::to_string(LO32(Val));
+        // Framte rate is numerator/denominator.
+        description += std::to_string(HI32(Val)) + "/" + std::to_string(LO32(Val));
+      }
+      else if (guidId == MF_MT_PIXEL_ASPECT_RATIO)
+      {
+        description += std::to_string(HI32(Val)) + ":" + std::to_string(LO32(Val));
       }
       else
       {
