@@ -28,7 +28,7 @@ A set of minimal sample apps that demonstrate how to use certain parts of Micros
  
  - MFCaptureRawFramesToFile - **Working**. Captures 100 samples from default webcam to file.
  
- - MFWebCamToFile - **Working**. Captures 100 samples from default webcam to an mp4 file. TODO: Video inverted.
+ - MFWebCamToFile - **Working**. Captures 100 samples from default webcam to an mp4 file.
 
 ### Video Capture -> H264 -> RTP
 
