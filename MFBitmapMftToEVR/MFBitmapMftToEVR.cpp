@@ -224,8 +224,8 @@ int main()
   CHECK_HR(pClock->Start(0), "Error starting presentation clock.");
 
   // Start the sample read-write loop.
-  IMFSample* pBitmapInSample = NULL, * pBitmapOutSample = NULL;
-  IMFMediaBuffer* pBitmapInMediaBuffer = NULL, * pBitmapOutMediaBuffer = NULL;
+  IMFSample* pBitmapInSample = NULL;
+  IMFMediaBuffer* pBitmapInMediaBuffer = NULL;
   BYTE* pBitmapMediaBufferData = NULL;
   DWORD bufferMaxLength = 0;
   DWORD bufferCurrLength = 0;
@@ -234,10 +234,6 @@ int main()
   BYTE* bitmapBuffer = new BYTE[3 * BITMAP_WIDTH * BITMAP_HEIGHT]; // RGB24
   DWORD bitmapBufferLength = 3 * BITMAP_WIDTH * BITMAP_HEIGHT;
   BYTE* bitmapConvertedBuffer = NULL;
-  DWORD bitmapConvertedBufferLength = 4 * BITMAP_WIDTH * BITMAP_HEIGHT;
-  MFT_OUTPUT_DATA_BUFFER mftOutBuffer;
-
-  memset(&mftOutBuffer, 0, sizeof mftOutBuffer);
 
   LONGLONG llTimeStamp = 0;
   UINT bitmapCount = 0;
@@ -273,13 +269,20 @@ int main()
     CHECK_HR(pBitmapInSample->SetSampleTime(llTimeStamp), "Error setting the bitmap sample time.");
     CHECK_HR(pBitmapInSample->SetSampleDuration(sampleDuration), "Error setting the bitmap sample duration.");
 
+    //CreateBitmapFromSample(L"capture_premft.bmp", BITMAP_WIDTH, BITMAP_HEIGHT, 24, pBitmapInSample);
+
      // Apply the colour conversion transform to the dummy sample.
+    CHECK_HR(pColorConvTransform->ProcessInput(0, pBitmapInSample, NULL), "Colour conversion MFT process input failed.");
+
     MFT_OUTPUT_STREAM_INFO si = { 0 };
     DWORD mftStatus = 0;
-    CHECK_HR(pColorConvTransform->ProcessInput(0, pBitmapInSample, 0), "Colour conversion MFT process input failed.");
+    IMFSample* pBitmapOutSample = NULL;
+    IMFMediaBuffer* pBitmapOutMediaBuffer = NULL;
+    MFT_OUTPUT_DATA_BUFFER mftOutBuffer;
 
+    CHECK_HR(pColorConvTransform->GetOutputStreamInfo(0, &si), "Failed to get output stream info from colour conversion MFT.");
     CHECK_HR(MFCreateSample(&pBitmapOutSample), "Failed to create bitmap output IMFSample.");
-    CHECK_HR(MFCreateMemoryBuffer(bitmapConvertedBufferLength, &pBitmapOutMediaBuffer), "Failed to create bitmap output sample memory buffer.");
+    CHECK_HR(MFCreateMemoryBuffer(si.cbSize, &pBitmapOutMediaBuffer), "Failed to create bitmap output sample memory buffer.");
     CHECK_HR(pBitmapOutSample->AddBuffer(pBitmapOutMediaBuffer), "Failed to add bitmap output sample to buffer.");
     mftOutBuffer.dwStreamID = 0;
     mftOutBuffer.dwStatus = 0;
@@ -292,20 +295,20 @@ int main()
 
     if (mftHr == S_OK)
     {
+      //CreateBitmapFromSample(L"capture_postmft.bmp", BITMAP_WIDTH, BITMAP_HEIGHT, 32, pBitmapOutSample);
+
+      IMFMediaBuffer* buf = NULL;
+      DWORD currLength = 0;
+
+      CHECK_HR(pBitmapOutSample->ConvertToContiguousBuffer(&buf), "ConvertToContiguousBuffer failed.");
+      CHECK_HR(buf->Lock(&bitmapConvertedBuffer, NULL, &currLength), "Failed to lock converted buffer IMFSample.");
+      CHECK_HR(buf->Unlock(), "Unlock buffer failed.");
+
       CHECK_HR(pD3DVideoSample->SetSampleTime(llTimeStamp), "Failed to set D3D video sample time.");
       CHECK_HR(pD3DVideoSample->SetSampleDuration(sampleDuration), "Failed to set D3D video sample duration.");
       CHECK_HR(pD3DVideoSample->GetBufferByIndex(0, &pDstBuffer), "Failed to get destination buffer.");
       CHECK_HR(pDstBuffer->QueryInterface(IID_PPV_ARGS(&p2DBuffer)), "Failed to get pointer to 2D buffer.");
-      
-      IMFMediaBuffer* buf = NULL;
-      DWORD bufLength;
-      CHECK_HR(pBitmapOutSample->ConvertToContiguousBuffer(&buf), "ConvertToContiguousBuffer failed.");
-      CHECK_HR(buf->GetCurrentLength(&bufLength), "Get buffer length failed.");
-
-      DWORD currLength = 0;
-      CHECK_HR(buf->Lock(&bitmapConvertedBuffer, NULL, &currLength), "Faield to lock converted buffer IMFSample.");
       CHECK_HR(p2DBuffer->ContiguousCopyFrom(bitmapConvertedBuffer, currLength), "Failed to copy bitmap to D2D buffer.");
-      CHECK_HR(buf->Unlock(), "Unlock buffer failed.");
       
       CHECK_HR(pStreamSink->ProcessSample(pD3DVideoSample), "Streamsink process sample failed.");
 

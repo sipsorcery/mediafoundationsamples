@@ -663,6 +663,23 @@ void CreateBitmapFile(LPCWSTR fileName, long width, long height, WORD bitsPerPix
   CloseHandle(file);
 }
 
+void CreateBitmapFromSample(LPCWSTR fileName, long width, long height, WORD bitsPerPixel, IMFSample* pSample)
+{
+  IMFMediaBuffer* pMediaBuffer = NULL;
+  DWORD bmpLength = 0;
+  BYTE* bmpBuffer = NULL;
+
+  CHECK_HR(pSample->ConvertToContiguousBuffer(&pMediaBuffer), "CreateBitmapFromSample convert to contiguous buffer failed.");
+  CHECK_HR(pMediaBuffer->Lock(&bmpBuffer, NULL, &bmpLength), "CreateBitmapFromSamplep failed to lock converted buffer IMFSample.");
+
+  CreateBitmapFile(fileName, width, height, bitsPerPixel, bmpBuffer, bmpLength);
+
+  CHECK_HR(pMediaBuffer->Unlock(), "CreateBitmapFromSample unlock buffer failed.");
+
+done:
+  return;
+}
+
 /**
 * Calculate the minimum stride from the media type.
 * From:
