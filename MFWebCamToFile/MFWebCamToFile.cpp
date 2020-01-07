@@ -6,14 +6,14 @@
 * stream from a webcam to an MP4 file.
 *
 * Note: The webcam index and the source reader media output type will need
-* adjustment depending on the the configuration of video devices on any machine
+* adjustment depending on the the configuration of video devices on the machine
 * running this sample.
 *
 * Author:
 * Aaron Clauson (aaron@sipsorcery.com)
 *
 * History:
-* 26 Feb 2015		Aaron Clauson (aaron@sipsorcery.com)	Created.
+* 26 Feb 2015		Aaron Clauson	Created.
 *
 * License: Public Domain (no warranty, use at own risk)
 /******************************************************************************/
@@ -63,7 +63,7 @@ int main()
 
 	// Get the first available webcam.
 	CHECK_HR(MFCreateAttributes(&videoConfig, 1),
-		"Error creating video configuation.\n");
+		"Error creating video configuation.");
 
 	// Request video capture devices.
 	CHECK_HR(videoConfig->SetGUID(
@@ -72,26 +72,27 @@ int main()
 		"Error initialising video configuration object.");
 
 	CHECK_HR(MFEnumDeviceSources(videoConfig, &videoDevices, &videoDeviceCount),
-		"Error enumerating video devices.\n");
+		"Error enumerating video devices.");
 
 	CHECK_HR(videoDevices[WEBCAM_DEVICE_INDEX]->GetAllocatedString(MF_DEVSOURCE_ATTRIBUTE_FRIENDLY_NAME, &webcamFriendlyName, &webcamNameLength),
-		"Error retrieving vide device friendly name.\n");
+		"Error retrieving vide device friendly name.");
 
 	wprintf(L"First available webcam: %s\n", webcamFriendlyName);
 
 	CHECK_HR(videoDevices[WEBCAM_DEVICE_INDEX]->ActivateObject(IID_PPV_ARGS(&videoSource)), 
-		"Error activating video device.\n");
+		"Error activating video device.");
 
 	// Create a source reader.
 	CHECK_HR(MFCreateSourceReaderFromMediaSource(
 		videoSource,
 		videoConfig,
 		&videoReader), 
-		"Error creating video source reader.\n");
+		"Error creating video source reader.");
 
 	CHECK_HR(videoReader->GetCurrentMediaType(
 		(DWORD)MF_SOURCE_READER_FIRST_VIDEO_STREAM,
-		&videoSourceOutputType), "Error retrieving current media type from first video stream.\n");
+		&videoSourceOutputType), 
+		"Error retrieving current media type from first video stream.");
 
 	// Create the MP4 sink writer.
 	CHECK_HR(MFCreateSinkWriterFromURL(
@@ -115,24 +116,18 @@ int main()
 
 	// Configure the output video type on the sink writer.
 	CHECK_HR(MFCreateMediaType(&pVideoOutType), "Configure encoder failed to create media type for video output sink.");
-	CHECK_HR(pVideoOutType->SetGUID(MF_MT_MAJOR_TYPE, MFMediaType_Video), "Failed to set video writer attribute, media type.");
+	CHECK_HR(videoSourceOutputType->CopyAllItems(pVideoOutType), "Error copying media type attributes from source output media type.");
+	// Only thing we want to change from source to sink is to get an mp4 output.
 	CHECK_HR(pVideoOutType->SetGUID(MF_MT_SUBTYPE, MFVideoFormat_H264), "Failed to set video writer attribute, video format (H.264).");
-	CHECK_HR(pVideoOutType->SetUINT32(MF_MT_AVG_BITRATE, 240 * 1000), "Failed to set video writer attribute, bit rate.");
-	CHECK_HR(CopyAttribute(videoSourceOutputType, pVideoOutType, MF_MT_FRAME_SIZE), "Failed to set video writer attribute, frame size.");
-	CHECK_HR(CopyAttribute(videoSourceOutputType, pVideoOutType, MF_MT_FRAME_RATE), "Failed to set video writer attribute, frame rate.");
-	CHECK_HR(CopyAttribute(videoSourceOutputType, pVideoOutType, MF_MT_PIXEL_ASPECT_RATIO), "Failed to set video writer attribute, aspect ratio.");
-	CHECK_HR(CopyAttribute(videoSourceOutputType, pVideoOutType, MF_MT_INTERLACE_MODE), "Failed to set video writer attribute, interlace mode.");
-	
+
 	CHECK_HR(pWriter->AddStream(pVideoOutType, &writerVideoStreamIndex), 
 		"Failed to add the video stream to the sink writer.");
 	
-	pVideoOutType->Release();
-
 	CHECK_HR(pWriter->SetInputMediaType(writerVideoStreamIndex, videoSourceOutputType, NULL), 
-		"Error setting the sink writer video input type.\n");
+		"Error setting the sink writer video input type.");
 
 	CHECK_HR(pWriter->BeginWriting(), 
-		"Failed to begin writing on the H.264 sink.\n");
+		"Failed to begin writing on the H.264 sink.");
 
 	DWORD streamIndex, flags;
 	LONGLONG llVideoTimeStamp;
@@ -151,15 +146,15 @@ int main()
 			&flags,															// Receives status flags.
 			&llVideoTimeStamp,									// Receives the time stamp.
 			&videoSample												// Receives the sample or NULL.
-			), "Error reading video sample.\n");
+			), "Error reading video sample.");
 
 		if (videoSample)
 		{
 			// rebase the time stamp
 			llVideoTimeStamp -= llVideoBaseTime;
 
-			CHECK_HR(videoSample->SetSampleTime(llVideoTimeStamp), "Set video sample time failed.\n");
-			CHECK_HR(pWriter->WriteSample(writerVideoStreamIndex, videoSample), "Write video sample failed.\n");
+			CHECK_HR(videoSample->SetSampleTime(llVideoTimeStamp), "Set video sample time failed.");
+			CHECK_HR(pWriter->WriteSample(writerVideoStreamIndex, videoSample), "Write video sample failed.");
 
 			SAFE_RELEASE(&videoSample);
 		}
@@ -171,7 +166,7 @@ int main()
 
 	if (pWriter)
 	{
-		CHECK_HR(pWriter->Finalize(), "Error finalising H.264 sink writer.\n");
+		CHECK_HR(pWriter->Finalize(), "Error finalising H.264 sink writer.");
 	}
 
 
@@ -184,6 +179,7 @@ done:
 	SAFE_RELEASE(videoConfig);
 	SAFE_RELEASE(videoDevices);
 	SAFE_RELEASE(videoReader);
+	SAFE_RELEASE(pVideoOutType);
 	SAFE_RELEASE(videoSourceOutputType);
 	SAFE_RELEASE(pWriter);
 
