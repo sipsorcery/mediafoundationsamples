@@ -731,3 +731,44 @@ HRESULT GetDefaultStride(IMFMediaType* pType, LONG* plStride)
 done:
   return hr;
 }
+
+/**
+* Status: This method is an attempt to match media types. This method is still
+* a work in progress. Not exactly sure how this should worl (AC Jan 2020).
+* Iterates the sink media's available type in an attempt to find
+* one it is happy with.
+* @param[in] SinkMediaTypeHandler: the sink media handler to find a matching media type for.
+* @param[out] ppMediaType: will be set with a media type if successful.
+* @@Returns S_OK if successful or an error code if not.
+*/
+HRESULT GetSupportedMediaType(IMFMediaTypeHandler* pSinkMediaTypeHandler, IMFMediaType** ppMediaType)
+{
+  IMFMediaType* pSupportedType = NULL;
+  DWORD sourceMediaTypeCount = 0;
+  HRESULT hr = S_OK;
+
+  hr = pSinkMediaTypeHandler->GetMediaTypeCount(&sourceMediaTypeCount);
+  CHECK_HR(hr, "Error getting sink media type count.");
+
+  // Find a media type that the sink and its writer support.
+  for (UINT i = 0; i < sourceMediaTypeCount; i++)
+  {
+    hr = pSinkMediaTypeHandler->GetMediaTypeByIndex(i, &pSupportedType);
+    CHECK_HR(hr, "Error getting media type from sink media type handler.");
+
+    std::cout << GetMediaTypeDescription(pSupportedType) << std::endl;
+
+    if (pSinkMediaTypeHandler->IsMediaTypeSupported(pSupportedType, NULL) == S_OK) {
+      std::cout << "Matching media type found." << std::endl;
+      ppMediaType = &pSupportedType;
+      break;
+    }
+    else {
+      std::cout << "Source media type does not match." << std::endl;
+      SAFE_RELEASE(pSupportedType);
+    }
+  }
+
+done:
+  return hr;
+}
