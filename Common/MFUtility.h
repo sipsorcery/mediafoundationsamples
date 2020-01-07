@@ -662,3 +662,55 @@ void CreateBitmapFile(LPCWSTR fileName, long width, long height, WORD bitsPerPix
 
   CloseHandle(file);
 }
+
+/**
+* Calculate the minimum stride from the media type.
+* From:
+* https://docs.microsoft.com/en-us/windows/win32/medfound/uncompressed-video-buffers
+*/
+HRESULT GetDefaultStride(IMFMediaType* pType, LONG* plStride)
+{
+  LONG lStride = 0;
+
+  // Try to get the default stride from the media type.
+  HRESULT hr = pType->GetUINT32(MF_MT_DEFAULT_STRIDE, (UINT32*)&lStride);
+  if (FAILED(hr))
+  {
+    // Attribute not set. Try to calculate the default stride.
+
+    GUID subtype = GUID_NULL;
+
+    UINT32 width = 0;
+    UINT32 height = 0;
+
+    // Get the subtype and the image size.
+    hr = pType->GetGUID(MF_MT_SUBTYPE, &subtype);
+    if (FAILED(hr))
+    {
+      goto done;
+    }
+
+    hr = MFGetAttributeSize(pType, MF_MT_FRAME_SIZE, &width, &height);
+    if (FAILED(hr))
+    {
+      goto done;
+    }
+
+    hr = MFGetStrideForBitmapInfoHeader(subtype.Data1, width, &lStride);
+    if (FAILED(hr))
+    {
+      goto done;
+    }
+
+    // Set the attribute for later reference.
+    (void)pType->SetUINT32(MF_MT_DEFAULT_STRIDE, UINT32(lStride));
+  }
+
+  if (SUCCEEDED(hr))
+  {
+    *plStride = lStride;
+  }
+
+done:
+  return hr;
+}

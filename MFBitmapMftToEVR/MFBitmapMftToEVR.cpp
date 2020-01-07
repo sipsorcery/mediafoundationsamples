@@ -3,19 +3,16 @@
 *
 * Description:
 * This file contains a C++ console application that is attempting to write raw
-* bitmaps transformed with an Media Foundation color converter transform to the 
+* bitmaps transformed with an Media Foundation color converter transform to the
 * Enhanced Video Renderer.
 * (https://msdn.microsoft.com/en-us/library/windows/desktop/ms694916%28v=vs.85%29.aspx).
 * This example extended the MFBitmapToEVR sample by adding the MFT transform.
-*
-* Status:
-* Under development (unlikely to work properly or at all).
 *
 * Author:
 * Aaron Clauson (aaron@sipsorcery.com)
 *
 * History:
-* 07 Jan 2019	  Aaron Clauson	  Created, Hobart, Australia.
+* 07 Jan 2019	  Aaron Clauson	  Created, Dublin, Ireland.
 *
 * License: Public Domain (no warranty, use at own risk)
 /******************************************************************************/
@@ -65,7 +62,7 @@ HWND _hwnd;
 
 int main()
 {
-  IMFMediaType* pVideoOutType = NULL;
+  IMFMediaType* pImfEvrSinkType = NULL;
   IMFMediaSink* pVideoSink = NULL;
   IMFStreamSink* pStreamSink = NULL;
   IMFMediaTypeHandler* pSinkMediaTypeHandler = NULL;
@@ -83,7 +80,7 @@ int main()
 
   IUnknown* colorConvTransformUnk = NULL;
   IMFTransform* pColorConvTransform = NULL; // This is colour converter MFT is used to convert between RGB32 and RGB24.
-  IMFMediaType* pDecInputMediaType = NULL, * pDecOutputMediaType = NULL;
+  IMFMediaType* pImfRgb24Type = NULL, * pImfRgb32Type = NULL;
   IMFMediaType* pVideoSourceOutType = NULL;
 
   CHECK_HR(CoInitializeEx(NULL, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE),
@@ -162,48 +159,52 @@ int main()
   // ----- Create a compatible media type and set on the source and sink. -----
 
   // Set the video input type on the EVR sink.
-  CHECK_HR(MFCreateMediaType(&pVideoOutType), "Failed to create video output media type.");
-  CHECK_HR(pVideoOutType->SetGUID(MF_MT_MAJOR_TYPE, MFMediaType_Video), "Failed to set video output media major type.");
-  CHECK_HR(pVideoOutType->SetGUID(MF_MT_SUBTYPE, MFVideoFormat_RGB32), "Failed to set video sub-type attribute on media type.");
-  CHECK_HR(pVideoOutType->SetUINT32(MF_MT_INTERLACE_MODE, MFVideoInterlace_Progressive), "Failed to set interlace mode attribute on media type.");
-  CHECK_HR(pVideoOutType->SetUINT32(MF_MT_ALL_SAMPLES_INDEPENDENT, TRUE), "Failed to set independent samples attribute on media type.");
-  CHECK_HR(MFSetAttributeRatio(pVideoOutType, MF_MT_PIXEL_ASPECT_RATIO, 1, 1), "Failed to set pixel aspect ratio attribute on media type.");
-  CHECK_HR(MFSetAttributeSize(pVideoOutType, MF_MT_FRAME_SIZE, BITMAP_WIDTH, BITMAP_HEIGHT), "Failed to set the frame size attribute on media type.");
-
-  /* CHECK_HR(CoCreateInstance(CLSID_CColorConvertDMO, NULL, CLSCTX_INPROC_SERVER,
-     IID_IUnknown, (void**)&colorConvTransformUnk),
-     "Failed to create colour converter MFT.");
-
-   CHECK_HR(colorConvTransformUnk->QueryInterface(IID_PPV_ARGS(&pColorConvTransform)),
-     "Failed to get IMFTransform interface from colour converter MFT object.");
-
-   MFCreateMediaType(&pDecInputMediaType);
-   CHECK_HR(pVideoSourceOutType->CopyAllItems(pDecInputMediaType), "Error copying media type attributes to colour converter input media type.");
-   CHECK_HR(pColorConvTransform->SetInputType(0, pDecInputMediaType, 0), "Failed to set input media type on colour converter MFT.");
-
-   MFCreateMediaType(&pDecOutputMediaType);
-   CHECK_HR(pVideoOutType->CopyAllItems(pDecOutputMediaType), "Error copying media type attributes to colour converter output media type.");
-   CHECK_HR(pColorConvTransform->SetOutputType(0, pDecOutputMediaType, 0), "Failed to set output media type on colour converter MFT.");
-
-   DWORD mftStatus = 0;
-   CHECK_HR(pColorConvTransform->GetInputStatus(0, &mftStatus), "Failed to get input status from colour converter MFT.");
-   if (MFT_INPUT_STATUS_ACCEPT_DATA != mftStatus) {
-     printf("Colour converter MFT is not accepting data.\n");
-     goto done;
-   }
-
-   CHECK_HR(pColorConvTransform->ProcessMessage(MFT_MESSAGE_COMMAND_FLUSH, NULL), "Failed to process FLUSH command on colour converter MFT.");
-   CHECK_HR(pColorConvTransform->ProcessMessage(MFT_MESSAGE_NOTIFY_BEGIN_STREAMING, NULL), "Failed to process BEGIN_STREAMING command on colour converter MFT.");
-   CHECK_HR(pColorConvTransform->ProcessMessage(MFT_MESSAGE_NOTIFY_START_OF_STREAM, NULL), "Failed to process START_OF_STREAM command on colour converter MFT.");*/
-
-   //CHECK_HR(GetSupportedMediaType(pMediaTypeHandler, &pVideoOutType),
-   //  "Failed to get supported media type.");
+  CHECK_HR(MFCreateMediaType(&pImfEvrSinkType), "Failed to create video output media type.");
+  CHECK_HR(pImfEvrSinkType->SetGUID(MF_MT_MAJOR_TYPE, MFMediaType_Video), "Failed to set video output media major type.");
+  CHECK_HR(pImfEvrSinkType->SetGUID(MF_MT_SUBTYPE, MFVideoFormat_RGB32), "Failed to set video sub-type attribute on media type.");
+  CHECK_HR(pImfEvrSinkType->SetUINT32(MF_MT_INTERLACE_MODE, MFVideoInterlace_Progressive), "Failed to set interlace mode attribute on media type.");
+  CHECK_HR(pImfEvrSinkType->SetUINT32(MF_MT_ALL_SAMPLES_INDEPENDENT, TRUE), "Failed to set independent samples attribute on media type.");
+  CHECK_HR(MFSetAttributeRatio(pImfEvrSinkType, MF_MT_PIXEL_ASPECT_RATIO, 1, 1), "Failed to set pixel aspect ratio attribute on media type.");
+  CHECK_HR(MFSetAttributeSize(pImfEvrSinkType, MF_MT_FRAME_SIZE, BITMAP_WIDTH, BITMAP_HEIGHT), "Failed to set the frame size attribute on media type.");
 
   std::cout << "EVR input media type defined as:" << std::endl;
-  std::cout << GetMediaTypeDescription(pVideoOutType) << std::endl << std::endl;
+  std::cout << GetMediaTypeDescription(pImfEvrSinkType) << std::endl << std::endl;
 
-  CHECK_HR(pSinkMediaTypeHandler->SetCurrentMediaType(pVideoOutType),
+  CHECK_HR(pSinkMediaTypeHandler->SetCurrentMediaType(pImfEvrSinkType),
     "Failed to set input media type on EVR sink.");
+
+  // ----- Create an MFT to convert between RGB24 and RGB32. -----
+
+  CHECK_HR(MFCreateMediaType(&pImfRgb24Type), "Failed to create RGB24 media type.");
+  CHECK_HR(MFCreateMediaType(&pImfRgb32Type), "Failed to create RGB32 media type.");
+
+  CHECK_HR(CoCreateInstance(CLSID_CColorConvertDMO, NULL, CLSCTX_INPROC_SERVER,
+    IID_IUnknown, (void**)&colorConvTransformUnk),
+    "Failed to create colour converter MFT.");
+
+  CHECK_HR(colorConvTransformUnk->QueryInterface(IID_PPV_ARGS(&pColorConvTransform)),
+    "Failed to get IMFTransform interface from colour converter MFT object.");
+
+  // The input to the transform is a copy of the media type set as the input for the EVR stream sink
+  // but with the video format changed from RGB32 to RGB24.
+  CHECK_HR(pImfEvrSinkType->CopyAllItems(pImfRgb24Type), "Error copying media type attributes to colour converter input media type.");
+  CHECK_HR(pImfRgb24Type->SetGUID(MF_MT_SUBTYPE, MFVideoFormat_RGB24), "Failed to set video sub-type attribute on media type.");
+  CHECK_HR(pColorConvTransform->SetInputType(0, pImfRgb24Type, 0), "Failed to set input media type on colour converter MFT.");
+
+  // The output from the transform is an exact copy of the media type set as the input for the EVR stream sink.
+  CHECK_HR(pImfEvrSinkType->CopyAllItems(pImfRgb32Type), "Error copying media type attributes to colour converter output media type.");
+  CHECK_HR(pColorConvTransform->SetOutputType(0, pImfRgb32Type, 0), "Failed to set output media type on colour converter MFT.");
+
+  DWORD mftStatus = 0;
+  CHECK_HR(pColorConvTransform->GetInputStatus(0, &mftStatus), "Failed to get input status from colour converter MFT.");
+  if (MFT_INPUT_STATUS_ACCEPT_DATA != mftStatus) {
+    printf("Colour converter MFT is not accepting data.\n");
+    goto done;
+  }
+
+  CHECK_HR(pColorConvTransform->ProcessMessage(MFT_MESSAGE_COMMAND_FLUSH, NULL), "Failed to process FLUSH command on colour converter MFT.");
+  CHECK_HR(pColorConvTransform->ProcessMessage(MFT_MESSAGE_NOTIFY_BEGIN_STREAMING, NULL), "Failed to process BEGIN_STREAMING command on colour converter MFT.");
+  CHECK_HR(pColorConvTransform->ProcessMessage(MFT_MESSAGE_NOTIFY_START_OF_STREAM, NULL), "Failed to process START_OF_STREAM command on colour converter MFT.");
 
   // ----- Source and sink now configured. Set up remaining infrastructure and then start sampling. -----
 
@@ -212,7 +213,7 @@ int main()
   CHECK_HR(MFGetService(pStreamSink, MR_VIDEO_ACCELERATION_SERVICE, IID_PPV_ARGS(&pVideoSampleAllocator)), "Failed to get IMFVideoSampleAllocator.");
   CHECK_HR(MFGetService(pVideoSink, MR_VIDEO_ACCELERATION_SERVICE, IID_PPV_ARGS(&pD3DManager)), "Failed to get Direct3D manager from EVR media sink.");
   CHECK_HR(pVideoSampleAllocator->SetDirectXManager(pD3DManager), "Failed to set D3DManager on video sample allocator.");
-  CHECK_HR(pVideoSampleAllocator->InitializeSampleAllocator(1, pVideoOutType), "Failed to initialise video sample allocator.");
+  CHECK_HR(pVideoSampleAllocator->InitializeSampleAllocator(1, pImfEvrSinkType), "Failed to initialise video sample allocator.");
   CHECK_HR(pVideoSampleAllocator->AllocateSample(&pD3DVideoSample), "Failed to allocate video sample.");
 
   // Get clocks organised.
@@ -223,50 +224,109 @@ int main()
   CHECK_HR(pClock->Start(0), "Error starting presentation clock.");
 
   // Start the sample read-write loop.
+  IMFSample* pBitmapInSample = NULL, * pBitmapOutSample = NULL;
+  IMFMediaBuffer* pBitmapInMediaBuffer = NULL, * pBitmapOutMediaBuffer = NULL;
+  BYTE* pBitmapMediaBufferData = NULL;
+  DWORD bufferMaxLength = 0;
+  DWORD bufferCurrLength = 0;
   IMFMediaBuffer* pDstBuffer = NULL;
   IMF2DBuffer* p2DBuffer = NULL;
-  BYTE* bitmapBuffer = new BYTE[4 * BITMAP_WIDTH * BITMAP_HEIGHT]; // RGB32
-  DWORD bitmapBufferLength = 4 * BITMAP_WIDTH * BITMAP_HEIGHT;
+  BYTE* bitmapBuffer = new BYTE[3 * BITMAP_WIDTH * BITMAP_HEIGHT]; // RGB24
+  DWORD bitmapBufferLength = 3 * BITMAP_WIDTH * BITMAP_HEIGHT;
+  BYTE* bitmapConvertedBuffer = NULL;
+  DWORD bitmapConvertedBufferLength = 4 * BITMAP_WIDTH * BITMAP_HEIGHT;
+  MFT_OUTPUT_DATA_BUFFER mftOutBuffer;
+
+  memset(&mftOutBuffer, 0, sizeof mftOutBuffer);
+
   LONGLONG llTimeStamp = 0;
   UINT bitmapCount = 0;
   LONGLONG sampleDuration = SAMPLE_DURATION;
 
   while (bitmapCount < SAMPLE_COUNT)
   {
-    printf("Attempting to write bitmap to EVR, sample count %d, sample duration %llu, sample time %llu.\n", bitmapCount, sampleDuration, llTimeStamp);
+    printf("Attempting to write bitmap to MFT->EVR, sample count %d, sample duration %llu, sample time %llu.\n", bitmapCount, sampleDuration, llTimeStamp);
 
     if (bitmapCount % 2 == 0) {
-      for (int i = 0; i < bitmapBufferLength; i += 4) {
+      for (int i = 0; i < bitmapBufferLength; i += 3) {
         bitmapBuffer[i + 0] = 0x00;
         bitmapBuffer[i + 1] = 0xff;
         bitmapBuffer[i + 2] = 0x00;
-        bitmapBuffer[i + 3] = 0x00;
       }
     }
     else {
-      for (int i = 0; i < bitmapBufferLength; i += 4) {
+      for (int i = 0; i < bitmapBufferLength; i += 3) {
         bitmapBuffer[i + 0] = 0xff;
         bitmapBuffer[i + 1] = 0x00;
         bitmapBuffer[i + 2] = 0x00;
-        bitmapBuffer[i + 3] = 0x00;
       }
     }
 
-    CHECK_HR(pD3DVideoSample->SetSampleTime(llTimeStamp), "Failed to set D3D video sample time.");
-    CHECK_HR(pD3DVideoSample->SetSampleDuration(sampleDuration), "Failed to set D3D video sample duration.");
-    CHECK_HR(pD3DVideoSample->GetBufferByIndex(0, &pDstBuffer), "Failed to get destination buffer.");
-    CHECK_HR(pDstBuffer->QueryInterface(IID_PPV_ARGS(&p2DBuffer)), "Failed to get pointer to 2D buffer.");
-    CHECK_HR(p2DBuffer->ContiguousCopyFrom(bitmapBuffer, bitmapBufferLength), "Failed to copy bitmap to D2D buffer.");
+    // Create a dummy IMFSample for the bitmap.
+    CHECK_HR(MFCreateSample(&pBitmapInSample), "Failed to create bitmap input IMFSample.");
+    CHECK_HR(MFCreateMemoryBuffer(bitmapBufferLength, &pBitmapInMediaBuffer), "Failed to create bitmap input sample memory buffer.");
+    CHECK_HR(pBitmapInSample->AddBuffer(pBitmapInMediaBuffer), "Failed to add bitmap sample to buffer.");
+    CHECK_HR(pBitmapInMediaBuffer->Lock(&pBitmapMediaBufferData, &bufferMaxLength, &bufferCurrLength), "Failed to lock bitmap media buffer.");
+    memcpy_s(pBitmapMediaBufferData, bufferMaxLength, bitmapBuffer, bitmapBufferLength);
+    CHECK_HR(pBitmapInMediaBuffer->Unlock(), "Failed to unlock bitmap buffer.");
+    CHECK_HR(pBitmapInMediaBuffer->SetCurrentLength(bitmapBufferLength), "Failed to set bitmap buffer current length.");
+    CHECK_HR(pBitmapInSample->SetSampleTime(llTimeStamp), "Error setting the bitmap sample time.");
+    CHECK_HR(pBitmapInSample->SetSampleDuration(sampleDuration), "Error setting the bitmap sample duration.");
 
-    CHECK_HR(pStreamSink->ProcessSample(pD3DVideoSample), "Streamsink process sample failed.");
+     // Apply the colour conversion transform to the dummy sample.
+    MFT_OUTPUT_STREAM_INFO si = { 0 };
+    DWORD mftStatus = 0;
+    CHECK_HR(pColorConvTransform->ProcessInput(0, pBitmapInSample, 0), "Colour conversion MFT process input failed.");
+
+    CHECK_HR(MFCreateSample(&pBitmapOutSample), "Failed to create bitmap output IMFSample.");
+    CHECK_HR(MFCreateMemoryBuffer(bitmapConvertedBufferLength, &pBitmapOutMediaBuffer), "Failed to create bitmap output sample memory buffer.");
+    CHECK_HR(pBitmapOutSample->AddBuffer(pBitmapOutMediaBuffer), "Failed to add bitmap output sample to buffer.");
+    mftOutBuffer.dwStreamID = 0;
+    mftOutBuffer.dwStatus = 0;
+    mftOutBuffer.pEvents = NULL;
+    mftOutBuffer.pSample = pBitmapOutSample;
+
+    auto mftHr = pColorConvTransform->ProcessOutput(0, 1, &mftOutBuffer, &mftStatus);
+
+    printf("Colour conversion result %.2X, output status %.2X.\n", mftHr, mftStatus);
+
+    if (mftHr == S_OK)
+    {
+      CHECK_HR(pD3DVideoSample->SetSampleTime(llTimeStamp), "Failed to set D3D video sample time.");
+      CHECK_HR(pD3DVideoSample->SetSampleDuration(sampleDuration), "Failed to set D3D video sample duration.");
+      CHECK_HR(pD3DVideoSample->GetBufferByIndex(0, &pDstBuffer), "Failed to get destination buffer.");
+      CHECK_HR(pDstBuffer->QueryInterface(IID_PPV_ARGS(&p2DBuffer)), "Failed to get pointer to 2D buffer.");
+      
+      IMFMediaBuffer* buf = NULL;
+      DWORD bufLength;
+      CHECK_HR(pBitmapOutSample->ConvertToContiguousBuffer(&buf), "ConvertToContiguousBuffer failed.");
+      CHECK_HR(buf->GetCurrentLength(&bufLength), "Get buffer length failed.");
+
+      DWORD currLength = 0;
+      CHECK_HR(buf->Lock(&bitmapConvertedBuffer, NULL, &currLength), "Faield to lock converted buffer IMFSample.");
+      CHECK_HR(p2DBuffer->ContiguousCopyFrom(bitmapConvertedBuffer, currLength), "Failed to copy bitmap to D2D buffer.");
+      CHECK_HR(buf->Unlock(), "Unlock buffer failed.");
+      
+      CHECK_HR(pStreamSink->ProcessSample(pD3DVideoSample), "Streamsink process sample failed.");
+
+      SAFE_RELEASE(buf);
+    }
+    else {
+      break;
+    }
 
     Sleep(SAMPLE_DURATION / 10000);
 
     bitmapCount++;
     llTimeStamp += sampleDuration;
+
+    SAFE_RELEASE(pBitmapInSample);
+    SAFE_RELEASE(pBitmapInMediaBuffer);
+    SAFE_RELEASE(pBitmapOutSample);
+    SAFE_RELEASE(pBitmapOutMediaBuffer);
   }
 
-  delete bitmapBuffer;
+  delete[] bitmapBuffer;
   SAFE_RELEASE(p2DBuffer);
   SAFE_RELEASE(pDstBuffer);
 
@@ -275,7 +335,7 @@ done:
   printf("finished.\n");
   auto c = getchar();
 
-  SAFE_RELEASE(pVideoOutType);
+  SAFE_RELEASE(pImfEvrSinkType);
   SAFE_RELEASE(pVideoSink);
   SAFE_RELEASE(pStreamSink);
   SAFE_RELEASE(pSinkMediaTypeHandler);
@@ -288,6 +348,11 @@ done:
   SAFE_RELEASE(pD3DManager);
   SAFE_RELEASE(pVideoSampleAllocator);
   SAFE_RELEASE(pD3DVideoSample);
+
+  SAFE_RELEASE(colorConvTransformUnk);
+  SAFE_RELEASE(pColorConvTransform);
+  SAFE_RELEASE(pImfRgb24Type);
+  SAFE_RELEASE(pImfRgb32Type);
 
   return 0;
 }

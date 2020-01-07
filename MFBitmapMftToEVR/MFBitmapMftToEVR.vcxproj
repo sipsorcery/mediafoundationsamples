@@ -19,7 +19,7 @@
     </ProjectConfiguration>
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="MFBitmapToEVR.cpp" />
+    <ClCompile Include="MFBitmapMftToEVR.cpp" />
   </ItemGroup>
   <PropertyGroup Label="Globals">
     <ProjectGuid>{A1498E34-8C3E-4977-98F7-216C34633DBC}</ProjectGuid>

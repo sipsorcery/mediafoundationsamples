@@ -12,7 +12,7 @@ A set of minimal sample apps that demonstrate how to use certain parts of Micros
  
  - MFBitmapToEVR - **Working**. Displays a byte array representing a bitmap on the Enhanced Video Renderer.
  
- - MFBitmapMFTToEVR - **Not Working**. Performs a colour conversion on a bitmap byte array and then dislays on the Enhanced Video Renderer. 
+ - MFBitmapMFTToEVR - **Working**. Performs a colour conversion on a bitmap byte array and then dislays on the Enhanced Video Renderer. 
  
  - MFVideoEVR - **Working**. Display video from an mp4 file in Window WITHOUT using a topology. Write samples to video renderer directly from buffer. TODO: Webcam capture not working.
  

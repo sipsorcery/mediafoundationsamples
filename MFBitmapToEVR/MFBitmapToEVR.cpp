@@ -12,7 +12,7 @@
 * Aaron Clauson (aaron@sipsorcery.com)
 *
 * History:
-* 07 Jan 2019	  Aaron Clauson	  Created, Hobart, Australia.
+* 07 Jan 2019	  Aaron Clauson	  Created, Dublin, Ireland.
 *
 * License: Public Domain (no warranty, use at own risk)
 /******************************************************************************/
