@@ -26,7 +26,7 @@ A set of minimal sample apps that demonstrate how to use certain parts of Micros
  
  - MFMP4ToYUVWithMFT - **Working**. Reads H264 encoded video frames from an mp4 file and decodes them to a YUV pixel format and dumps them to an output file.
  
- - MFCaptureRawFramesToFile - **Working**. Captures 100 samples from default webcam to file. TODO: Video inverted.
+ - MFCaptureRawFramesToFile - **Working**. Captures 100 samples from default webcam to file.
  
  - MFWebCamToFile - **Working**. Captures 100 samples from default webcam to an mp4 file. TODO: Video inverted.
 
