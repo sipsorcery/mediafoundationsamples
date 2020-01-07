@@ -45,11 +45,11 @@
 #pragma comment(lib, "d3d9.lib")
 #pragma comment(lib, "Dxva2.lib")
 
-#define BITMAP_WIDTH  640
-#define BITMAP_HEIGHT 480
-#define SAMPLE_DURATION 10000000 // 10^7 corresponds to 1 second.
-#define SAMPLE_COUNT 10
-#define BITMAP_FRAME_RATE 1
+#define FRAME_WIDTH  640
+#define FRAME_HEIGHT 480
+#define SAMPLE_COUNT 100
+#define FRAME_RATE 10
+#define SAMPLE_DURATION 10 * 1000 * 1000 / FRAME_RATE
 
 // Forward function definitions.
 DWORD InitializeWindow(LPVOID lpThreadParameter);
@@ -76,7 +76,7 @@ int main()
   IDirect3DDeviceManager9* pD3DManager = NULL;
   IMFVideoSampleAllocator* pVideoSampleAllocator = NULL;
   IMFSample* pD3DVideoSample = NULL;
-  RECT rc = { 0, 0, BITMAP_WIDTH, BITMAP_HEIGHT };
+  RECT rc = { 0, 0, FRAME_WIDTH, FRAME_HEIGHT };
   BOOL fSelected = false;
 
   IUnknown* colorConvTransformUnk = NULL;
@@ -166,8 +166,8 @@ int main()
   CHECK_HR(pImfEvrSinkType->SetUINT32(MF_MT_INTERLACE_MODE, MFVideoInterlace_Progressive), "Failed to set interlace mode attribute on media type.");
   CHECK_HR(pImfEvrSinkType->SetUINT32(MF_MT_ALL_SAMPLES_INDEPENDENT, TRUE), "Failed to set independent samples attribute on media type.");
   CHECK_HR(MFSetAttributeRatio(pImfEvrSinkType, MF_MT_PIXEL_ASPECT_RATIO, 1, 1), "Failed to set pixel aspect ratio attribute on media type.");
-  CHECK_HR(MFSetAttributeSize(pImfEvrSinkType, MF_MT_FRAME_SIZE, BITMAP_WIDTH, BITMAP_HEIGHT), "Failed to set the frame size attribute on media type.");
-  CHECK_HR(MFSetAttributeSize(pImfEvrSinkType, MF_MT_FRAME_RATE, BITMAP_FRAME_RATE, 1), "Failed to set the frame rate attribute on media type.");
+  CHECK_HR(MFSetAttributeSize(pImfEvrSinkType, MF_MT_FRAME_SIZE, FRAME_WIDTH, FRAME_HEIGHT), "Failed to set the frame size attribute on media type.");
+  CHECK_HR(MFSetAttributeSize(pImfEvrSinkType, MF_MT_FRAME_RATE, FRAME_RATE, 1), "Failed to set the frame rate attribute on media type.");
 
   std::cout << "EVR input media type defined as:" << std::endl;
   std::cout << GetMediaTypeDescription(pImfEvrSinkType) << std::endl << std::endl;
@@ -233,8 +233,8 @@ int main()
   DWORD bufferCurrLength = 0;
   IMFMediaBuffer* pDstBuffer = NULL;
   IMF2DBuffer* p2DBuffer = NULL;
-  BYTE* bitmapBuffer = new BYTE[3 * BITMAP_WIDTH * BITMAP_HEIGHT]; // RGB24
-  DWORD bitmapBufferLength = 3 * BITMAP_WIDTH * BITMAP_HEIGHT;
+  DWORD bitmapBufferLength = 3 * FRAME_WIDTH * FRAME_HEIGHT;
+  BYTE* bitmapBuffer = new BYTE[bitmapBufferLength]; // RGB24
   BYTE* bitmapConvertedBuffer = NULL;
 
   LONGLONG llTimeStamp = 0;
@@ -384,8 +384,8 @@ DWORD InitializeWindow(LPVOID lpThreadParameter)
       WS_OVERLAPPEDWINDOW,
       CW_USEDEFAULT,
       CW_USEDEFAULT,
-      BITMAP_WIDTH,
-      BITMAP_HEIGHT,
+      FRAME_WIDTH,
+      FRAME_HEIGHT,
       NULL,
       NULL,
       GetModuleHandle(NULL),

@@ -57,7 +57,7 @@
 
 #define VIDEO_WIDTH  640
 #define VIDEO_HEIGHT 480
-#define VIDEO_FRAME_RATE 5
+#define VIDEO_FRAME_RATE 30
 #define WEBCAM_DEVICE_INDEX 0	  // Adjust according to desired video capture device.
 
 // Forward function definitions.
@@ -324,7 +324,7 @@ int main()
       CHECK_HR(videoSample->SetSampleTime(llTimeStamp), "Error setting the video sample time.");
       CHECK_HR(videoSample->GetSampleDuration(&sampleDuration), "Failed to get video sample duration.");
 
-      printf("Attempting to convert sample, sample duration %llu, sample time %llu, evr timestamp %llu.\n", sampleDuration, llTimeStamp, evrTimestamp);
+      //printf("Attempting to convert sample, sample duration %llu, sample time %llu, evr timestamp %llu.\n", sampleDuration, llTimeStamp, evrTimestamp);
 
       //CreateBitmapFromSample(L"capture_premft.bmp", VIDEO_WIDTH, VIDEO_HEIGHT, 24, videoSample);
 
@@ -349,7 +349,7 @@ int main()
 
       auto mftProcessOutput = pColorConvTransform->ProcessOutput(0, 1, &outputDataBuffer, &processOutputStatus);
 
-      printf("Colour conversion result %.2X, MFT status %.2X.\n", mftProcessOutput, processOutputStatus);
+      //printf("Colour conversion result %.2X, MFT status %.2X.\n", mftProcessOutput, processOutputStatus);
 
       if (mftProcessOutput == S_OK)
       {
@@ -362,7 +362,7 @@ int main()
         CHECK_HR(buf->GetCurrentLength(&bufLength), "Get buffer length failed.");
         CHECK_HR(buf->Lock(&pByteBuf, NULL, &pByteBufLength), "Failed to lock sample buffer.");
 
-        printf("Color converted sample size %u.\n", bufLength);
+        //printf("Color converted sample size %u.\n", bufLength);
 
         //CreateBitmapFile(L"capture_postmft.bmp", VIDEO_WIDTH, VIDEO_HEIGHT, 32, pByteBuf, pByteBufLength);
 
