@@ -6,15 +6,20 @@
 * frames from an mp4 file and decodes them to a YUV pixel format and dumps them
 * to an output file stream.
 *
+* Note: If using the big_buck_bunny.mp4 file as the source the frame size changes
+* from 640x360 to 640x368 on the 25th sample. This program deals with it by throwing
+* overwriting the captured file whenever teh source stream changes.
+* 
 * To convert the raw yuv data dumped at the end of this sample use the ffmpeg command below:
-* ffmpeg -vcodec rawvideo -s 640x360 -pix_fmt yuv420p -i rawframes.yuv -vframes 1 output.jpeg
-* ffmpeg -vcodec rawvideo -s 640x360 -pix_fmt yuv420p -i rawframes.yuv out.avi # (not working)
+* ffmpeg -vcodec rawvideo -s 640x368 -pix_fmt yuv420p -i rawframes.yuv -vframes 1 output.jpeg
+* ffmpeg -vcodec rawvideo -s 640x368 -pix_fmt yuv420p -i rawframes.yuv out.avi
 *
 * Author:
 * Aaron Clauson (aaron@sipsorcery.com)
 *
 * History:
 * 08 Mar 2015	  Aaron Clauson	  Created, Hobart, Australia.
+* 08 Jan 2020   Aaron Clauson   Added ability to cope with source stream change event.
 *
 * License: Public Domain (no warranty, use at own risk)
 /******************************************************************************/
@@ -121,6 +126,8 @@ int _tmain(int argc, _TCHAR* argv[])
     goto done;
   }
 
+  std::cout << "H264 decoder output media type: " << GetMediaTypeDescription(pDecOutputMediaType) << std::endl << std::endl;
+
   CHECK_HR(pDecoderTransform->ProcessMessage(MFT_MESSAGE_COMMAND_FLUSH, NULL), "Failed to process FLUSH command on H.264 decoder MFT.");
   CHECK_HR(pDecoderTransform->ProcessMessage(MFT_MESSAGE_NOTIFY_BEGIN_STREAMING, NULL), "Failed to process BEGIN_STREAMING command on H.264 decoder MFT.");
   CHECK_HR(pDecoderTransform->ProcessMessage(MFT_MESSAGE_NOTIFY_START_OF_STREAM, NULL), "Failed to process START_OF_STREAM command on H.264 decoder MFT.");
@@ -132,17 +139,15 @@ int _tmain(int argc, _TCHAR* argv[])
   IMFSample* videoSample = NULL, * reConstructedVideoSample = NULL;
   DWORD streamIndex, flags, bufferCount;
   LONGLONG llVideoTimeStamp = 0, llSampleDuration = 0, yuvVideoTimeStamp = 0, yuvSampleDuration = 0;
-  HRESULT mftProcessInput = S_OK;
-  HRESULT mftProcessOutput = S_OK;
   MFT_OUTPUT_STREAM_INFO StreamInfo;
   IMFSample* mftOutSample = NULL;
   IMFMediaBuffer* pBuffer = NULL, * reConstructedBuffer = NULL;
   int sampleCount = 0;
   DWORD mftOutFlags;
-  //DWORD srcBufLength;
   DWORD sampleFlags = 0;
   LONGLONG reconVideoTimeStamp = 0, reconSampleDuration = 0;
   DWORD reconSampleFlags;
+  IMFMediaType* pChangedDecOutMediaType = NULL;
 
   memset(&outputDataBuffer, 0, sizeof outputDataBuffer);
 
@@ -168,9 +173,9 @@ int _tmain(int argc, _TCHAR* argv[])
 
       CHECK_HR(videoSample->SetSampleTime(llVideoTimeStamp), "Error setting the video sample time.");
       CHECK_HR(videoSample->GetSampleDuration(&llSampleDuration), "Error getting video sample duration.");
-      videoSample->GetSampleFlags(&sampleFlags);
+      CHECK_HR(videoSample->GetSampleFlags(&sampleFlags), "Error getting smaple flags.");
 
-      printf("Sample time %I64d, sample duration %I64d, sample flags %d.\n", llVideoTimeStamp, llSampleDuration, sampleFlags);
+      printf("Sample flags %d, sample duration %I64d, sample time %I64d\n", sampleFlags, llSampleDuration, llVideoTimeStamp);
 
       // Extrtact and then re-construct the sample to simulate processing encoded H264 frames received outside of MF.
       IMFMediaBuffer* srcBuf = NULL;
@@ -182,7 +187,7 @@ int _tmain(int argc, _TCHAR* argv[])
       CHECK_HR(srcBuf->GetCurrentLength(&srcBufLength), "Get buffer length failed.");
       CHECK_HR(srcBuf->Lock(&srcByteBuffer, &srcBuffMaxLen, &srcBuffCurrLen), "Error locking source buffer.");
 
-      //// Now re-constuct.
+      // Now re-constuct.
       MFCreateSample(&reConstructedVideoSample);
       CHECK_HR(MFCreateMemoryBuffer(srcBufLength, &reConstructedBuffer), "Failed to create memory buffer.");
       CHECK_HR(reConstructedVideoSample->AddBuffer(reConstructedBuffer), "Failed to add buffer to re-constructed sample.");
@@ -197,55 +202,74 @@ int _tmain(int argc, _TCHAR* argv[])
       CHECK_HR(reConstructedBuffer->Unlock(), "Error unlocking recon buffer.");
       reConstructedBuffer->SetCurrentLength(srcBuffCurrLen);
 
-      CHECK_HR(srcBuf->Unlock(), "Error unlocking source buffer.\n");
+      CHECK_HR(srcBuf->Unlock(), "Error unlocking source buffer.");
 
       CHECK_HR(pDecoderTransform->ProcessInput(0, reConstructedVideoSample, 0), "The H264 decoder ProcessInput call failed.");
 
-      //CHECK_HR(pDecoderTransform->GetOutputStatus(&mftOutFlags), "H264 MFT GetOutputStatus failed.");
-
       CHECK_HR(pDecoderTransform->GetOutputStreamInfo(0, &StreamInfo), "Failed to get output stream info from H264 MFT.");
+      CHECK_HR(MFCreateSample(&mftOutSample), "Failed to create MF sample.");
+      CHECK_HR(MFCreateMemoryBuffer(StreamInfo.cbSize, &pBuffer), "Failed to create memory buffer.");
+      CHECK_HR(mftOutSample->AddBuffer(pBuffer), "Failed to add sample to buffer.");
+      outputDataBuffer.dwStreamID = 0;
+      outputDataBuffer.dwStatus = 0;
+      outputDataBuffer.pEvents = NULL;
+      outputDataBuffer.pSample = mftOutSample;
 
-      while (true)
+      // ToDo: These two lines are not right. Need to work out where to get timestamp and duration from the H264 decoder MFT.
+      CHECK_HR(outputDataBuffer.pSample->SetSampleTime(llVideoTimeStamp), "Error getting YUV sample time.");
+      CHECK_HR(outputDataBuffer.pSample->SetSampleDuration(llSampleDuration), "Error getting YUV sample duration.");
+
+      auto mftProcessOutput = pDecoderTransform->ProcessOutput(0, 1, &outputDataBuffer, &processOutputStatus);
+
+      printf("Process output result %.2X, MFT status %.2X.\n", mftProcessOutput, processOutputStatus);
+
+      if (mftProcessOutput == S_OK)
       {
-        CHECK_HR(MFCreateSample(&mftOutSample), "Failed to create MF sample.");
-        CHECK_HR(MFCreateMemoryBuffer(StreamInfo.cbSize, &pBuffer), "Failed to create memory buffer.");
-        CHECK_HR(mftOutSample->AddBuffer(pBuffer), "Failed to add sample to buffer.");
-        outputDataBuffer.dwStreamID = 0;
-        outputDataBuffer.dwStatus = 0;
-        outputDataBuffer.pEvents = NULL;
-        outputDataBuffer.pSample = mftOutSample;
+        IMFMediaBuffer* buf = NULL;
+        DWORD bufLength;
+        CHECK_HR(mftOutSample->ConvertToContiguousBuffer(&buf), "ConvertToContiguousBuffer failed.");
+        CHECK_HR(buf->GetCurrentLength(&bufLength), "Get buffer length failed.");
 
-        mftProcessOutput = pDecoderTransform->ProcessOutput(0, 1, &outputDataBuffer, &processOutputStatus);
+        printf("Writing sample %i, sample time %I64d, sample duration %I64d, sample size %i.\n", sampleCount, yuvVideoTimeStamp, yuvSampleDuration, bufLength);
 
-        if (mftProcessOutput != MF_E_TRANSFORM_NEED_MORE_INPUT)
-        {
-          // ToDo: These two lines are not right. Need to work out where to get timestamp and duration from the H264 decoder MFT.
-          CHECK_HR(outputDataBuffer.pSample->SetSampleTime(llVideoTimeStamp), "Error getting YUV sample time.");
-          CHECK_HR(outputDataBuffer.pSample->SetSampleDuration(llSampleDuration), "Error getting YUV sample duration.");
-
-          IMFMediaBuffer* buf = NULL;
-          DWORD bufLength;
-          CHECK_HR(mftOutSample->ConvertToContiguousBuffer(&buf), "ConvertToContiguousBuffer failed.");
-          CHECK_HR(buf->GetCurrentLength(&bufLength), "Get buffer length failed.");
-
-          printf("Writing sample %i, sample time %I64d, sample duration %I64d, sample size %i.\n", sampleCount, yuvVideoTimeStamp, yuvSampleDuration, bufLength);
-
-          byte* byteBuffer;
-          DWORD buffCurrLen = 0;
-          DWORD buffMaxLen = 0;
-          buf->Lock(&byteBuffer, &buffMaxLen, &buffCurrLen);
-          outputBuffer.write((char*)byteBuffer, bufLength);
-          outputBuffer.flush();
-        }
-        else {
-          break;
-        }
+        byte* byteBuffer;
+        DWORD buffCurrLen = 0;
+        DWORD buffMaxLen = 0;
+        buf->Lock(&byteBuffer, &buffMaxLen, &buffCurrLen);
+        outputBuffer.write((char*)byteBuffer, bufLength);
+        outputBuffer.flush();
 
         mftOutSample->Release();
       }
-    }
+      else if (mftProcessOutput == MF_E_TRANSFORM_STREAM_CHANGE) {
+        // Format of the input stream has changed. https://docs.microsoft.com/en-us/windows/win32/medfound/handling-stream-changes
+        if (outputDataBuffer.dwStatus == MFT_OUTPUT_DATA_BUFFER_FORMAT_CHANGE) {
+          printf("H264 stream changed.\n");
 
-    sampleCount++;
+          CHECK_HR(pDecoderTransform->GetOutputAvailableType(0, 0, &pChangedDecOutMediaType),
+            "Failed to get the H264 decoder ouput media type after a stream change.");
+
+          std::cout << "H264 decoder output media type: " << GetMediaTypeDescription(pChangedDecOutMediaType) << std::endl << std::endl;
+
+          CHECK_HR(pChangedDecOutMediaType->SetGUID(MF_MT_SUBTYPE, MFVideoFormat_IYUV), "Failed to set media sub type.");
+          CHECK_HR(pDecoderTransform->SetOutputType(0, pChangedDecOutMediaType, 0), "Failed to set new output media type on H.264 decoder MFT.");
+
+          CHECK_HR(pDecoderTransform->ProcessMessage(MFT_MESSAGE_COMMAND_FLUSH, NULL), "Failed to process FLUSH command on H.264 decoder MFT.");
+
+          outputBuffer.close();
+          outputBuffer.open(CAPTURE_FILENAME, std::ios::out | std::ios::binary);
+        }
+        else {
+          printf("H264 stream changed but didn't have the data format change flag set.\n");
+          goto done;
+        }
+      }
+      else if (mftProcessOutput != MF_E_TRANSFORM_NEED_MORE_INPUT) {
+        printf("H264 decoder process output error result %.2X, MFT status %.2X.\n", mftProcessOutput, processOutputStatus);
+      }
+
+      sampleCount++;
+    }
   }
 
   outputBuffer.close();
@@ -254,6 +278,8 @@ done:
 
   printf("finished.\n");
   auto c = getchar();
+
+  SAFE_RELEASE(pChangedDecOutMediaType);
 
   return 0;
 }
