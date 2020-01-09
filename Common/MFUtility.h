@@ -837,7 +837,7 @@ done:
 }
 
 /**
-* Creates a new media smaple and vopies the first media buffer from the source to it.
+* Creates a new media sample and copies the first media buffer from the source to it.
 * @param[in] pSrcSampl: size of the media buffer to set on the create media sample.
 * @param[out] pDstSample: pointer to the the media sample created.
 * @@Returns S_OK if successful or an error code if not.
@@ -873,16 +873,15 @@ done:
 }
 
 /**
-* Applies an MFT taransform to a media sample.
+* Attempts to get an output sample from an MFT transform.
 * @param[in] pTransform: pointer to the media transform to apply.
-* @param[in] pSample: pointer to the media sample to apply the transform to.
 * @param[out] pOutSample: pointer to the media sample output by the transform. Can be NULL
 *                        if the transform did not produce one.
 * @param[out] transformFlushed: if set to true means the transform format changed and the
                                 contents were flushed. Output format of sample most likely changed.
 * @@Returns S_OK if successful or an error code if not.
 */
-HRESULT TransformSample(IMFTransform* pTransform, IMFSample* pSample, IMFSample** pOutSample, BOOL* transformFlushed)
+HRESULT GetTransformOutput(IMFTransform* pTransform, IMFSample** pOutSample, BOOL* transformFlushed)
 {
   MFT_OUTPUT_STREAM_INFO StreamInfo;
   MFT_OUTPUT_DATA_BUFFER outputDataBuffer = {};
@@ -891,9 +890,6 @@ HRESULT TransformSample(IMFTransform* pTransform, IMFSample* pSample, IMFSample*
 
   HRESULT hr = S_OK;
   *transformFlushed = FALSE;
-
-  hr = pTransform->ProcessInput(0, pSample, 0);
-  CHECK_HR(hr, "The H264 decoder ProcessInput call failed.");
 
   hr = pTransform->GetOutputStreamInfo(0, &StreamInfo);
   CHECK_HR(hr, "Failed to get output stream info from H264 MFT.");
@@ -910,7 +906,10 @@ HRESULT TransformSample(IMFTransform* pTransform, IMFSample* pSample, IMFSample*
 
   printf("Process output result %.2X, MFT status %.2X.\n", mftProcessOutput, processOutputStatus);
 
-  if (mftProcessOutput == MF_E_TRANSFORM_STREAM_CHANGE) {
+  if (mftProcessOutput == S_OK) {
+    // Sample is ready and allocated in pOutSample.
+  }
+  else if (mftProcessOutput == MF_E_TRANSFORM_STREAM_CHANGE) {
     // Format of the input stream has changed. https://docs.microsoft.com/en-us/windows/win32/medfound/handling-stream-changes
     if (outputDataBuffer.dwStatus == MFT_OUTPUT_DATA_BUFFER_FORMAT_CHANGE) {
       printf("H264 stream changed.\n");
@@ -935,10 +934,21 @@ HRESULT TransformSample(IMFTransform* pTransform, IMFSample* pSample, IMFSample*
       printf("H264 stream changed but didn't have the data format change flag set. Don't know what to do.\n");
       hr = E_NOTIMPL;
     }
+
+    SAFE_RELEASE(pOutSample);
+    *pOutSample = NULL;
   }
-  else if (mftProcessOutput != S_OK && mftProcessOutput != MF_E_TRANSFORM_NEED_MORE_INPUT) {
+  else if (mftProcessOutput == MF_E_TRANSFORM_NEED_MORE_INPUT) {
+    // More input is not an error condition but it means the allocated output sample is empty.
+    SAFE_RELEASE(pOutSample);
+    *pOutSample = NULL;
+    hr = MF_E_TRANSFORM_NEED_MORE_INPUT;
+  }
+  else {
     printf("H264 decoder process output error result %.2X, MFT status %.2X.\n", mftProcessOutput, processOutputStatus);
     hr = mftProcessOutput;
+    SAFE_RELEASE(pOutSample);
+    *pOutSample = NULL;
   }
 
 done:

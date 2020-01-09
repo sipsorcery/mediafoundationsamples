@@ -44,7 +44,7 @@
 
 #define VIDEO_SAMPLE_WIDTH 640	// Needs to match the video frame width in the input file.
 #define VIDEO_SAMPLE_HEIGHT 360 // Needs to match the video frame height in the input file.
-#define SAMPLE_COUNT 100
+#define SAMPLE_COUNT 1000
 #define SOURCE_FILENAME L"../MediaFiles/big_buck_bunny.mp4"
 #define CAPTURE_FILENAME "rawframes.yuv"
 
@@ -133,7 +133,7 @@ int _tmain(int argc, _TCHAR* argv[])
   // Start processing frames.
   IMFSample* pVideoSample = NULL, * pCopyVideoSample = NULL, * pH264DecodeOutSample = NULL;
   DWORD streamIndex, flags;
-  LONGLONG llVideoTimeStamp = 0, llSampleDuration = 0, yuvVideoTimeStamp = 0, yuvSampleDuration = 0;
+  LONGLONG llVideoTimeStamp = 0, llSampleDuration = 0;
   int sampleCount = 0;
   DWORD sampleFlags = 0;
   BOOL h264DecodeTransformFlushed = FALSE;
@@ -160,7 +160,7 @@ int _tmain(int argc, _TCHAR* argv[])
 
       CHECK_HR(pVideoSample->SetSampleTime(llVideoTimeStamp), "Error setting the video sample time.");
       CHECK_HR(pVideoSample->GetSampleDuration(&llSampleDuration), "Error getting video sample duration.");
-      CHECK_HR(pVideoSample->GetSampleFlags(&sampleFlags), "Error getting smaple flags.");
+      CHECK_HR(pVideoSample->GetSampleFlags(&sampleFlags), "Error getting sample flags.");
 
       printf("Sample count %d, Sample flags %d, sample duration %I64d, sample time %I64d\n", sampleCount, sampleFlags, llSampleDuration, llVideoTimeStamp);
 
@@ -169,23 +169,37 @@ int _tmain(int argc, _TCHAR* argv[])
         "Failed to copy single buffer IMF sample.");
 
       // Apply the H264 decoder transform
-      CHECK_HR(TransformSample(pDecoderTransform, pCopyVideoSample, &pH264DecodeOutSample, &h264DecodeTransformFlushed),
-        "Failed to apply H24 decoder transform.");
+      CHECK_HR(pDecoderTransform->ProcessInput(0, pCopyVideoSample, 0),
+       "The H264 decoder ProcessInput call failed.");
 
-      if (h264DecodeTransformFlushed == TRUE) {
-        // H264 decoder format changed. Clear the capture file and start again.
-        outputBuffer.close();
-        outputBuffer.open(CAPTURE_FILENAME, std::ios::out | std::ios::binary);
-      }
-      else if (pH264DecodeOutSample != NULL) {
-        // Write decoded sample to capture file.
-        CHECK_HR(WriteSampleToFile(pH264DecodeOutSample, &outputBuffer),
-          "Failed to write sample to file.");
+      HRESULT getOutputResult = S_OK;
+
+      while (getOutputResult == S_OK) {
+
+        getOutputResult = GetTransformOutput(pDecoderTransform, &pH264DecodeOutSample, &h264DecodeTransformFlushed);
+        
+        if (getOutputResult != S_OK && getOutputResult != MF_E_TRANSFORM_NEED_MORE_INPUT) {
+          printf("Error getting H264 decoder transform output, error code %.2X.\n", getOutputResult);
+          goto done;
+        }
+
+        if (h264DecodeTransformFlushed == TRUE) {
+          // H264 decoder format changed. Clear the capture file and start again.
+          outputBuffer.close();
+          outputBuffer.open(CAPTURE_FILENAME, std::ios::out | std::ios::binary);
+        }
+        else if (pH264DecodeOutSample != NULL) {
+          // Write decoded sample to capture file.
+          CHECK_HR(WriteSampleToFile(pH264DecodeOutSample, &outputBuffer),
+            "Failed to write sample to file.");
+        }
+
+        SAFE_RELEASE(pH264DecodeOutSample);
       }
 
       sampleCount++;
 
-      SAFE_RELEASE(pH264DecodeOutSample);
+      SAFE_RELEASE(pVideoSample);
       SAFE_RELEASE(pCopyVideoSample);
     }
   }
