@@ -8,8 +8,8 @@
 *
 * Note: If using the big_buck_bunny.mp4 file as the source the frame size changes
 * from 640x360 to 640x368 on the 25th sample. This program deals with it by throwing
-* overwriting the captured file whenever teh source stream changes.
-* 
+* overwriting the captured file whenever the source stream changes.
+*
 * To convert the raw yuv data dumped at the end of this sample use the ffmpeg command below:
 * ffmpeg -vcodec rawvideo -s 640x368 -pix_fmt yuv420p -i rawframes.yuv -vframes 1 output.jpeg
 * ffmpeg -vcodec rawvideo -s 640x368 -pix_fmt yuv420p -i rawframes.yuv out.avi
@@ -44,6 +44,12 @@
 #pragma comment(lib, "mfuuid.lib")
 #pragma comment(lib, "wmcodecdspuuid.lib")
 
+// Forward function definitions.
+HRESULT CreateSingleBufferIMFSample(DWORD bufferSize, IMFSample** pSample);
+HRESULT CreateAndCopySingleBufferIMFSample(IMFSample* pSrcSample, IMFSample** pDstSample);
+HRESULT TransformSample(IMFTransform* pTransform, IMFSample* pSample, IMFSample** pOutSample, BOOL* transformFlushed);
+HRESULT WriteSampleToFile(IMFSample* pSample, std::ofstream* pFileStream);
+
 #define VIDEO_SAMPLE_WIDTH 640	// Needs to match the video frame width in the input file.
 #define VIDEO_SAMPLE_HEIGHT 360 // Needs to match the video frame height in the input file.
 #define SAMPLE_COUNT 100
@@ -65,11 +71,11 @@ int _tmain(int argc, _TCHAR* argv[])
   IMFMediaSource* mediaFileSource = NULL;
   IMFAttributes* pVideoReaderAttributes = NULL;
   IMFSourceReader* pSourceReader = NULL;
-  MF_OBJECT_TYPE ObjectType = MF_OBJECT_INVALID;
   IMFMediaType* pFileVideoMediaType = NULL;
   IUnknown* spDecTransformUnk = NULL;
   IMFTransform* pDecoderTransform = NULL; // This is H264 Decoder MFT.
   IMFMediaType* pDecInputMediaType = NULL, * pDecOutputMediaType = NULL;
+  MF_OBJECT_TYPE ObjectType = MF_OBJECT_INVALID;
   DWORD mftStatus = 0;
 
   // Set up the reader for the file.
@@ -77,11 +83,11 @@ int _tmain(int argc, _TCHAR* argv[])
     "MFCreateSourceResolver failed.");
 
   CHECK_HR(pSourceResolver->CreateObjectFromURL(
-    SOURCE_FILENAME,		// URL of the source.
+    SOURCE_FILENAME,		        // URL of the source.
     MF_RESOLUTION_MEDIASOURCE,  // Create a source object.
     NULL,                       // Optional property store.
-    &ObjectType,				// Receives the created object type. 
-    &uSource					// Receives a pointer to the media source.
+    &ObjectType,				        // Receives the created object type. 
+    &uSource					          // Receives a pointer to the media source.
   ),
     "Failed to create media source resolver for file.");
 
@@ -132,24 +138,13 @@ int _tmain(int argc, _TCHAR* argv[])
   CHECK_HR(pDecoderTransform->ProcessMessage(MFT_MESSAGE_NOTIFY_BEGIN_STREAMING, NULL), "Failed to process BEGIN_STREAMING command on H.264 decoder MFT.");
   CHECK_HR(pDecoderTransform->ProcessMessage(MFT_MESSAGE_NOTIFY_START_OF_STREAM, NULL), "Failed to process START_OF_STREAM command on H.264 decoder MFT.");
 
-  // Ready to start processing frames.
-
-  MFT_OUTPUT_DATA_BUFFER outputDataBuffer;
-  DWORD processOutputStatus = 0;
-  IMFSample* videoSample = NULL, * reConstructedVideoSample = NULL;
-  DWORD streamIndex, flags, bufferCount;
+  // Start processing frames.
+  IMFSample* pVideoSample = NULL, * pCopyVideoSample = NULL, * pH264DecodeOutSample = NULL;
+  DWORD streamIndex, flags;
   LONGLONG llVideoTimeStamp = 0, llSampleDuration = 0, yuvVideoTimeStamp = 0, yuvSampleDuration = 0;
-  MFT_OUTPUT_STREAM_INFO StreamInfo;
-  IMFSample* mftOutSample = NULL;
-  IMFMediaBuffer* pBuffer = NULL, * reConstructedBuffer = NULL;
   int sampleCount = 0;
-  DWORD mftOutFlags;
   DWORD sampleFlags = 0;
-  LONGLONG reconVideoTimeStamp = 0, reconSampleDuration = 0;
-  DWORD reconSampleFlags;
-  IMFMediaType* pChangedDecOutMediaType = NULL;
-
-  memset(&outputDataBuffer, 0, sizeof outputDataBuffer);
+  BOOL h264DecodeTransformFlushed = FALSE;
 
   while (sampleCount <= SAMPLE_COUNT)
   {
@@ -159,7 +154,7 @@ int _tmain(int argc, _TCHAR* argv[])
       &streamIndex,                   // Receives the actual stream index. 
       &flags,                         // Receives status flags.
       &llVideoTimeStamp,              // Receives the time stamp.
-      &videoSample                    // Receives the sample or NULL.
+      &pVideoSample                    // Receives the sample or NULL.
     ), "Error reading video sample.");
 
     if (flags & MF_SOURCE_READERF_STREAMTICK)
@@ -167,108 +162,39 @@ int _tmain(int argc, _TCHAR* argv[])
       printf("Stream tick.\n");
     }
 
-    if (videoSample)
+    if (pVideoSample)
     {
       printf("Processing sample %i.\n", sampleCount);
 
-      CHECK_HR(videoSample->SetSampleTime(llVideoTimeStamp), "Error setting the video sample time.");
-      CHECK_HR(videoSample->GetSampleDuration(&llSampleDuration), "Error getting video sample duration.");
-      CHECK_HR(videoSample->GetSampleFlags(&sampleFlags), "Error getting smaple flags.");
+      CHECK_HR(pVideoSample->SetSampleTime(llVideoTimeStamp), "Error setting the video sample time.");
+      CHECK_HR(pVideoSample->GetSampleDuration(&llSampleDuration), "Error getting video sample duration.");
+      CHECK_HR(pVideoSample->GetSampleFlags(&sampleFlags), "Error getting smaple flags.");
 
-      printf("Sample flags %d, sample duration %I64d, sample time %I64d\n", sampleFlags, llSampleDuration, llVideoTimeStamp);
+      printf("Sample count %d, Sample flags %d, sample duration %I64d, sample time %I64d\n", sampleCount, sampleFlags, llSampleDuration, llVideoTimeStamp);
 
-      // Extrtact and then re-construct the sample to simulate processing encoded H264 frames received outside of MF.
-      IMFMediaBuffer* srcBuf = NULL;
-      DWORD srcBufLength;
-      byte* srcByteBuffer;
-      DWORD srcBuffCurrLen = 0;
-      DWORD srcBuffMaxLen = 0;
-      CHECK_HR(videoSample->ConvertToContiguousBuffer(&srcBuf), "ConvertToContiguousBuffer failed.");
-      CHECK_HR(srcBuf->GetCurrentLength(&srcBufLength), "Get buffer length failed.");
-      CHECK_HR(srcBuf->Lock(&srcByteBuffer, &srcBuffMaxLen, &srcBuffCurrLen), "Error locking source buffer.");
+      // Replicate transmitting the sample across the network and reconstructing.
+      CHECK_HR(CreateAndCopySingleBufferIMFSample(pVideoSample, &pCopyVideoSample),
+        "Failed to copy single buffer IMF sample.");
 
-      // Now re-constuct.
-      MFCreateSample(&reConstructedVideoSample);
-      CHECK_HR(MFCreateMemoryBuffer(srcBufLength, &reConstructedBuffer), "Failed to create memory buffer.");
-      CHECK_HR(reConstructedVideoSample->AddBuffer(reConstructedBuffer), "Failed to add buffer to re-constructed sample.");
-      CHECK_HR(reConstructedVideoSample->SetSampleTime(llVideoTimeStamp), "Error setting the recon video sample time.");
-      CHECK_HR(reConstructedVideoSample->SetSampleDuration(llSampleDuration), "Error setting recon video sample duration.");
+      // Apply the H264 decoder transform
+      CHECK_HR(TransformSample(pDecoderTransform, pCopyVideoSample, &pH264DecodeOutSample, &h264DecodeTransformFlushed),
+        "Failed to apply H24 decoder transform.");
 
-      byte* reconByteBuffer;
-      DWORD reconBuffCurrLen = 0;
-      DWORD reconBuffMaxLen = 0;
-      CHECK_HR(reConstructedBuffer->Lock(&reconByteBuffer, &reconBuffMaxLen, &reconBuffCurrLen), "Error locking recon buffer.");
-      memcpy(reconByteBuffer, srcByteBuffer, srcBuffCurrLen);
-      CHECK_HR(reConstructedBuffer->Unlock(), "Error unlocking recon buffer.");
-      reConstructedBuffer->SetCurrentLength(srcBuffCurrLen);
-
-      CHECK_HR(srcBuf->Unlock(), "Error unlocking source buffer.");
-
-      CHECK_HR(pDecoderTransform->ProcessInput(0, reConstructedVideoSample, 0), "The H264 decoder ProcessInput call failed.");
-
-      CHECK_HR(pDecoderTransform->GetOutputStreamInfo(0, &StreamInfo), "Failed to get output stream info from H264 MFT.");
-      CHECK_HR(MFCreateSample(&mftOutSample), "Failed to create MF sample.");
-      CHECK_HR(MFCreateMemoryBuffer(StreamInfo.cbSize, &pBuffer), "Failed to create memory buffer.");
-      CHECK_HR(mftOutSample->AddBuffer(pBuffer), "Failed to add sample to buffer.");
-      outputDataBuffer.dwStreamID = 0;
-      outputDataBuffer.dwStatus = 0;
-      outputDataBuffer.pEvents = NULL;
-      outputDataBuffer.pSample = mftOutSample;
-
-      // ToDo: These two lines are not right. Need to work out where to get timestamp and duration from the H264 decoder MFT.
-      CHECK_HR(outputDataBuffer.pSample->SetSampleTime(llVideoTimeStamp), "Error getting YUV sample time.");
-      CHECK_HR(outputDataBuffer.pSample->SetSampleDuration(llSampleDuration), "Error getting YUV sample duration.");
-
-      auto mftProcessOutput = pDecoderTransform->ProcessOutput(0, 1, &outputDataBuffer, &processOutputStatus);
-
-      printf("Process output result %.2X, MFT status %.2X.\n", mftProcessOutput, processOutputStatus);
-
-      if (mftProcessOutput == S_OK)
-      {
-        IMFMediaBuffer* buf = NULL;
-        DWORD bufLength;
-        CHECK_HR(mftOutSample->ConvertToContiguousBuffer(&buf), "ConvertToContiguousBuffer failed.");
-        CHECK_HR(buf->GetCurrentLength(&bufLength), "Get buffer length failed.");
-
-        printf("Writing sample %i, sample time %I64d, sample duration %I64d, sample size %i.\n", sampleCount, yuvVideoTimeStamp, yuvSampleDuration, bufLength);
-
-        byte* byteBuffer;
-        DWORD buffCurrLen = 0;
-        DWORD buffMaxLen = 0;
-        buf->Lock(&byteBuffer, &buffMaxLen, &buffCurrLen);
-        outputBuffer.write((char*)byteBuffer, bufLength);
-        outputBuffer.flush();
-
-        mftOutSample->Release();
+      if (h264DecodeTransformFlushed == TRUE) {
+        // H264 decoder format changed. Clear the capture file and start again.
+        outputBuffer.close();
+        outputBuffer.open(CAPTURE_FILENAME, std::ios::out | std::ios::binary);
       }
-      else if (mftProcessOutput == MF_E_TRANSFORM_STREAM_CHANGE) {
-        // Format of the input stream has changed. https://docs.microsoft.com/en-us/windows/win32/medfound/handling-stream-changes
-        if (outputDataBuffer.dwStatus == MFT_OUTPUT_DATA_BUFFER_FORMAT_CHANGE) {
-          printf("H264 stream changed.\n");
-
-          CHECK_HR(pDecoderTransform->GetOutputAvailableType(0, 0, &pChangedDecOutMediaType),
-            "Failed to get the H264 decoder ouput media type after a stream change.");
-
-          std::cout << "H264 decoder output media type: " << GetMediaTypeDescription(pChangedDecOutMediaType) << std::endl << std::endl;
-
-          CHECK_HR(pChangedDecOutMediaType->SetGUID(MF_MT_SUBTYPE, MFVideoFormat_IYUV), "Failed to set media sub type.");
-          CHECK_HR(pDecoderTransform->SetOutputType(0, pChangedDecOutMediaType, 0), "Failed to set new output media type on H.264 decoder MFT.");
-
-          CHECK_HR(pDecoderTransform->ProcessMessage(MFT_MESSAGE_COMMAND_FLUSH, NULL), "Failed to process FLUSH command on H.264 decoder MFT.");
-
-          outputBuffer.close();
-          outputBuffer.open(CAPTURE_FILENAME, std::ios::out | std::ios::binary);
-        }
-        else {
-          printf("H264 stream changed but didn't have the data format change flag set.\n");
-          goto done;
-        }
-      }
-      else if (mftProcessOutput != MF_E_TRANSFORM_NEED_MORE_INPUT) {
-        printf("H264 decoder process output error result %.2X, MFT status %.2X.\n", mftProcessOutput, processOutputStatus);
+      else if (pH264DecodeOutSample != NULL) {
+        // Write decoded sample to capture file.
+        CHECK_HR(WriteSampleToFile(pH264DecodeOutSample, &outputBuffer),
+          "Failed to write sample to file.");
       }
 
       sampleCount++;
+
+      SAFE_RELEASE(pH264DecodeOutSample);
+      SAFE_RELEASE(pCopyVideoSample);
     }
   }
 
@@ -279,7 +205,189 @@ done:
   printf("finished.\n");
   auto c = getchar();
 
-  SAFE_RELEASE(pChangedDecOutMediaType);
+  SAFE_RELEASE(pSourceResolver);
+  SAFE_RELEASE(uSource);
+  SAFE_RELEASE(mediaFileSource);
+  SAFE_RELEASE(pVideoReaderAttributes);
+  SAFE_RELEASE(pSourceReader);
+  SAFE_RELEASE(pFileVideoMediaType);
+  SAFE_RELEASE(spDecTransformUnk);
+  SAFE_RELEASE(pDecoderTransform);
+  SAFE_RELEASE(pDecInputMediaType),
+  SAFE_RELEASE(pDecOutputMediaType);
 
   return 0;
+}
+
+/**
+* Dumps the media buffer contents of an IMF sample to a file stream.
+* @param[in] pSample: pointer to the media sample to dump the contents from.
+* @param[in] pFileStream: pointer to the file stream to wrtie to.
+* @@Returns S_OK if successful or an error code if not.
+*/
+HRESULT WriteSampleToFile(IMFSample* pSample, std::ofstream* pFileStream)
+{
+  IMFMediaBuffer* buf = NULL;
+  DWORD bufLength;
+
+  HRESULT hr = S_OK;
+
+  hr = pSample->ConvertToContiguousBuffer(&buf);
+  CHECK_HR(hr, "ConvertToContiguousBuffer failed.");
+
+  hr = buf->GetCurrentLength(&bufLength);
+  CHECK_HR(hr, "Get buffer length failed.");
+
+  printf("Writing sample to capture file sample size %i.\n", bufLength);
+
+  byte* byteBuffer = NULL;
+  DWORD buffMaxLen = 0, buffCurrLen = 0;
+  buf->Lock(&byteBuffer, &buffMaxLen, &buffCurrLen);
+
+  pFileStream->write((char*)byteBuffer, bufLength);
+  pFileStream->flush();
+
+done:
+
+  SAFE_RELEASE(buf);
+
+  return hr;
+}
+
+/**
+* Applies an MFT taransform to a media sample.
+* @param[in] pTransform: pointer to the media transform to apply.
+* @param[in] pSample: pointer to the media sample to apply the transform to.
+* @param[out] pOutSample: pointer to the media sample output by the transform. Can be NULL
+*                        if the transform did not produce one.
+* @param[out] transformFlushed: if set to true means the transform format changed and the
+                                contents were flushed. Output format of sample most likely changed.
+* @@Returns S_OK if successful or an error code if not.
+*/
+HRESULT TransformSample(IMFTransform* pTransform, IMFSample* pSample, IMFSample** pOutSample, BOOL* transformFlushed)
+{
+  MFT_OUTPUT_STREAM_INFO StreamInfo;
+  MFT_OUTPUT_DATA_BUFFER outputDataBuffer = {};
+  DWORD processOutputStatus = 0;
+  IMFMediaType* pChangedOutMediaType = NULL;
+
+  HRESULT hr = S_OK;
+  *transformFlushed = FALSE;
+
+  hr = pTransform->ProcessInput(0, pSample, 0);
+  CHECK_HR(hr, "The H264 decoder ProcessInput call failed.");
+
+  hr = pTransform->GetOutputStreamInfo(0, &StreamInfo);
+  CHECK_HR(hr, "Failed to get output stream info from H264 MFT.");
+
+  hr = CreateSingleBufferIMFSample(StreamInfo.cbSize, pOutSample);
+  CHECK_HR(hr, "Failed to create new single buffer IMF sample.");
+
+  outputDataBuffer.dwStreamID = 0;
+  outputDataBuffer.dwStatus = 0;
+  outputDataBuffer.pEvents = NULL;
+  outputDataBuffer.pSample = *pOutSample;
+
+  auto mftProcessOutput = pTransform->ProcessOutput(0, 1, &outputDataBuffer, &processOutputStatus);
+
+  printf("Process output result %.2X, MFT status %.2X.\n", mftProcessOutput, processOutputStatus);
+
+  if (mftProcessOutput == MF_E_TRANSFORM_STREAM_CHANGE) {
+    // Format of the input stream has changed. https://docs.microsoft.com/en-us/windows/win32/medfound/handling-stream-changes
+    if (outputDataBuffer.dwStatus == MFT_OUTPUT_DATA_BUFFER_FORMAT_CHANGE) {
+      printf("H264 stream changed.\n");
+
+      hr = pTransform->GetOutputAvailableType(0, 0, &pChangedOutMediaType);
+      CHECK_HR(hr, "Failed to get the H264 decoder ouput media type after a stream change.");
+
+      std::cout << "H264 decoder output media type: " << GetMediaTypeDescription(pChangedOutMediaType) << std::endl << std::endl;
+
+      hr = pChangedOutMediaType->SetGUID(MF_MT_SUBTYPE, MFVideoFormat_IYUV);
+      CHECK_HR(hr, "Failed to set media sub type.");
+
+      hr = pTransform->SetOutputType(0, pChangedOutMediaType, 0);
+      CHECK_HR(hr, "Failed to set new output media type on H.264 decoder MFT.");
+
+      hr = pTransform->ProcessMessage(MFT_MESSAGE_COMMAND_FLUSH, NULL);
+      CHECK_HR(hr, "Failed to process FLUSH command on H.264 decoder MFT.");
+
+      *transformFlushed = TRUE;
+    }
+    else {
+      printf("H264 stream changed but didn't have the data format change flag set. Don't know what to do.\n");
+      hr = E_NOTIMPL;
+    }
+  }
+  else if (mftProcessOutput != S_OK && mftProcessOutput != MF_E_TRANSFORM_NEED_MORE_INPUT) {
+    printf("H264 decoder process output error result %.2X, MFT status %.2X.\n", mftProcessOutput, processOutputStatus);
+    hr = mftProcessOutput;
+  }
+
+done:
+
+  SAFE_RELEASE(pChangedOutMediaType);
+
+  return hr;
+}
+
+/**
+* Creates a new single buffer media sample.
+* @param[in] bufferSize: size of the media buffer to set on the create media sample.
+* @param[out] pSample: pointer to the create single buffer media sample.
+* @@Returns S_OK if successful or an error code if not.
+*/
+HRESULT CreateSingleBufferIMFSample(DWORD bufferSize, IMFSample** pSample)
+{
+  IMFMediaBuffer* pBuffer = NULL;
+
+  HRESULT hr = S_OK;
+
+  hr = MFCreateSample(pSample);
+  CHECK_HR(hr, "Failed to create MF sample.");
+
+  hr = MFCreateMemoryBuffer(bufferSize, &pBuffer);
+  CHECK_HR(hr, "Failed to create memory buffer.");
+
+  hr = (*pSample)->AddBuffer(pBuffer);
+  CHECK_HR(hr, "Failed to add sample to buffer.");
+
+done:
+
+  return hr;
+}
+
+/**
+* Creates a new media smaple and vopies the first media buffer from the source to it.
+* @param[in] pSrcSampl: size of the media buffer to set on the create media sample.
+* @param[out] pDstSample: pointer to the the media sample created.
+* @@Returns S_OK if successful or an error code if not.
+*/
+HRESULT CreateAndCopySingleBufferIMFSample(IMFSample* pSrcSample, IMFSample** pDstSample)
+{
+  IMFMediaBuffer* pSrcBuf = NULL;
+  IMFMediaBuffer* pDstBuffer = NULL;
+  DWORD srcBufLength;
+
+  HRESULT hr = S_OK;
+
+  // Gets total length of ALL media buffer samples. We can use here because it's only a
+  // single buffer sample copy.
+  hr = pSrcSample->GetTotalLength(&srcBufLength);
+  CHECK_HR(hr, "Failed to get total length from source buffer.");
+
+  hr = CreateSingleBufferIMFSample(srcBufLength, pDstSample);
+  CHECK_HR(hr, "Failed to create new single buffer IMF sample.");
+
+  hr = pSrcSample->CopyAllItems(*pDstSample);
+  CHECK_HR(hr, "Failed to copy IMFSample items from src to dst.");
+
+  hr = (*pDstSample)->GetBufferByIndex(0, &pDstBuffer);
+  CHECK_HR(hr, "Failed to get buffer from sample.");
+
+  hr = pSrcSample->CopyToBuffer(pDstBuffer);
+  CHECK_HR(hr, "Failed to copy IMF media buffer.");
+
+done:
+
+  return hr;
 }
