@@ -41,7 +41,7 @@
 #pragma comment(lib, "wmcodecdspuuid.lib")
 
 #define WEBCAM_DEVICE_INDEX 0	// Adjust according to desired video capture device.
-#define SAMPLE_COUNT 100			// Adjust depending on number of samples to capture.
+#define SAMPLE_COUNT 1000			// Adjust depending on number of samples to capture.
 #define CAPTURE_FILENAME "rawframes.yuv"
 
 int _tmain(int argc, _TCHAR* argv[])
@@ -208,7 +208,7 @@ int _tmain(int argc, _TCHAR* argv[])
   printf("Reading video samples from webcam.\n");
 
   IMFSample* pVideoSample = NULL, * pH264EncodeOutSample = NULL, * pH264DecodeOutSample = NULL;
-  DWORD streamIndex, flags, sampleFlags;
+  DWORD streamIndex = 0, flags = 0, sampleFlags = 0;
   LONGLONG llVideoTimeStamp, llSampleDuration;
   int sampleCount = 0;
   BOOL h264EncodeTransformFlushed = FALSE;
@@ -227,7 +227,27 @@ int _tmain(int argc, _TCHAR* argv[])
 
     if (flags & MF_SOURCE_READERF_STREAMTICK)
     {
-      printf("Stream tick.\n");
+      printf("\tStream tick.\n");
+    }
+    if (flags & MF_SOURCE_READERF_ENDOFSTREAM)
+    {
+      printf("\tEnd of stream.\n");
+      break;
+    }
+    if (flags & MF_SOURCE_READERF_NEWSTREAM)
+    {
+      printf("\tNew stream.\n");
+      break;
+    }
+    if (flags & MF_SOURCE_READERF_NATIVEMEDIATYPECHANGED)
+    {
+      printf("\tNative type changed.\n");
+      break;
+    }
+    if (flags & MF_SOURCE_READERF_CURRENTMEDIATYPECHANGED)
+    {
+      printf("\tCurrent type changed.\n");
+      break;
     }
 
     if (pVideoSample)
@@ -236,7 +256,7 @@ int _tmain(int argc, _TCHAR* argv[])
 
       CHECK_HR(pVideoSample->SetSampleTime(llVideoTimeStamp), "Error setting the video sample time.");
       CHECK_HR(pVideoSample->GetSampleDuration(&llSampleDuration), "Error getting video sample duration.");
-      CHECK_HR(pVideoSample->GetSampleFlags(&sampleFlags), "Error getting smaple flags.");
+      CHECK_HR(pVideoSample->GetSampleFlags(&sampleFlags), "Error getting sample flags.");
 
       printf("Sample count %d, Sample flags %d, sample duration %I64d, sample time %I64d\n", sampleCount, sampleFlags, llSampleDuration, llVideoTimeStamp);
 
@@ -290,20 +310,23 @@ int _tmain(int argc, _TCHAR* argv[])
               // Write decoded sample to capture file.
               CHECK_HR(WriteSampleToFile(pH264DecodeOutSample, &outputBuffer),
                 "Failed to write sample to file.");
-
             }
+
+            SAFE_RELEASE(pH264DecodeOutSample);
           }
           // -----
 
         }
+
+        SAFE_RELEASE(pH264EncodeOutSample);
       }
       // *****
 
       sampleCount++;
 
-      // Note: Apart from memory leak issues if the media samples are note relased the videoReader->ReadSample
+      // Note: Apart from memory leak issues if the media samples are not released the videoReader->ReadSample
       // blocks when it is unable to allocate a new sample.
-      SAFE_RELEASE(pVideoSample);
+      SAFE_RELEASE(pVideoSample);;
       SAFE_RELEASE(pH264EncodeOutSample);
       SAFE_RELEASE(pH264DecodeOutSample);
     }

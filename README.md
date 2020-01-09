@@ -34,7 +34,7 @@ A set of minimal sample apps that demonstrate how to use certain parts of Micros
 
  - MFWebCamToH264Buffer - **Working**. Captures the video stream from a webcam to an H264 byte array by directly using the MFT H264 Encoder.
 
- - MFH264RoundTrip - **Not Working**. Captures video frames, H264 encode to byte array, decode to YUV (replicates encode, transmit, decode).
+ - MFH264RoundTrip - **Working**. Captures video frames, H264 encode to byte array, decode to YUV (replicates encode, transmit, decode).
 
  - MFWebCamRtp - **Not Working**. Stream mp4 file to ffplay with RTP stream.
  

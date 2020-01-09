@@ -825,26 +825,28 @@ HRESULT CreateSingleBufferIMFSample(DWORD bufferSize, IMFSample** pSample)
   hr = MFCreateSample(pSample);
   CHECK_HR(hr, "Failed to create MF sample.");
 
+  // Adds a ref count to the pBuffer object.
   hr = MFCreateMemoryBuffer(bufferSize, &pBuffer);
   CHECK_HR(hr, "Failed to create memory buffer.");
 
+  // Adds another ref count to the pBuffer object.
   hr = (*pSample)->AddBuffer(pBuffer);
   CHECK_HR(hr, "Failed to add sample to buffer.");
 
 done:
-
+  // Leave the single ref count that will be removed when the pSample is released.
+  SAFE_RELEASE(pBuffer);
   return hr;
 }
 
 /**
 * Creates a new media sample and copies the first media buffer from the source to it.
-* @param[in] pSrcSampl: size of the media buffer to set on the create media sample.
+* @param[in] pSrcSample: size of the media buffer to set on the create media sample.
 * @param[out] pDstSample: pointer to the the media sample created.
 * @@Returns S_OK if successful or an error code if not.
 */
 HRESULT CreateAndCopySingleBufferIMFSample(IMFSample* pSrcSample, IMFSample** pDstSample)
 {
-  IMFMediaBuffer* pSrcBuf = NULL;
   IMFMediaBuffer* pDstBuffer = NULL;
   DWORD srcBufLength;
 
@@ -868,7 +870,7 @@ HRESULT CreateAndCopySingleBufferIMFSample(IMFSample* pSrcSample, IMFSample** pD
   CHECK_HR(hr, "Failed to copy IMF media buffer.");
 
 done:
-
+  SAFE_RELEASE(pDstBuffer);
   return hr;
 }
 
@@ -876,15 +878,15 @@ done:
 * Attempts to get an output sample from an MFT transform.
 * @param[in] pTransform: pointer to the media transform to apply.
 * @param[out] pOutSample: pointer to the media sample output by the transform. Can be NULL
-*                        if the transform did not produce one.
+*  if the transform did not produce one.
 * @param[out] transformFlushed: if set to true means the transform format changed and the
-                                contents were flushed. Output format of sample most likely changed.
+*  contents were flushed. Output format of sample most likely changed.
 * @@Returns S_OK if successful or an error code if not.
 */
 HRESULT GetTransformOutput(IMFTransform* pTransform, IMFSample** pOutSample, BOOL* transformFlushed)
 {
-  MFT_OUTPUT_STREAM_INFO StreamInfo;
-  MFT_OUTPUT_DATA_BUFFER outputDataBuffer = {};
+  MFT_OUTPUT_STREAM_INFO StreamInfo = { 0 };
+  MFT_OUTPUT_DATA_BUFFER outputDataBuffer = { 0 };
   DWORD processOutputStatus = 0;
   IMFMediaType* pChangedOutMediaType = NULL;
 
@@ -892,46 +894,49 @@ HRESULT GetTransformOutput(IMFTransform* pTransform, IMFSample** pOutSample, BOO
   *transformFlushed = FALSE;
 
   hr = pTransform->GetOutputStreamInfo(0, &StreamInfo);
-  CHECK_HR(hr, "Failed to get output stream info from H264 MFT.");
-
-  hr = CreateSingleBufferIMFSample(StreamInfo.cbSize, pOutSample);
-  CHECK_HR(hr, "Failed to create new single buffer IMF sample.");
+  CHECK_HR(hr, "Failed to get output stream info from MFT.");
 
   outputDataBuffer.dwStreamID = 0;
   outputDataBuffer.dwStatus = 0;
   outputDataBuffer.pEvents = NULL;
-  outputDataBuffer.pSample = *pOutSample;
+
+  if ((StreamInfo.dwFlags & MFT_OUTPUT_STREAM_PROVIDES_SAMPLES) == 0) {
+    hr = CreateSingleBufferIMFSample(StreamInfo.cbSize, pOutSample);
+    CHECK_HR(hr, "Failed to create new single buffer IMF sample.");
+    outputDataBuffer.pSample = *pOutSample;
+  }
 
   auto mftProcessOutput = pTransform->ProcessOutput(0, 1, &outputDataBuffer, &processOutputStatus);
 
   printf("Process output result %.2X, MFT status %.2X.\n", mftProcessOutput, processOutputStatus);
 
   if (mftProcessOutput == S_OK) {
-    // Sample is ready and allocated in pOutSample.
+    // Sample is ready and allocated on the transform output buffer.
+    *pOutSample = outputDataBuffer.pSample;
   }
   else if (mftProcessOutput == MF_E_TRANSFORM_STREAM_CHANGE) {
     // Format of the input stream has changed. https://docs.microsoft.com/en-us/windows/win32/medfound/handling-stream-changes
     if (outputDataBuffer.dwStatus == MFT_OUTPUT_DATA_BUFFER_FORMAT_CHANGE) {
-      printf("H264 stream changed.\n");
+      printf("MFT stream changed.\n");
 
       hr = pTransform->GetOutputAvailableType(0, 0, &pChangedOutMediaType);
-      CHECK_HR(hr, "Failed to get the H264 decoder ouput media type after a stream change.");
+      CHECK_HR(hr, "Failed to get the MFT ouput media type after a stream change.");
 
-      std::cout << "H264 decoder output media type: " << GetMediaTypeDescription(pChangedOutMediaType) << std::endl << std::endl;
+      std::cout << "MFT output media type: " << GetMediaTypeDescription(pChangedOutMediaType) << std::endl << std::endl;
 
       hr = pChangedOutMediaType->SetGUID(MF_MT_SUBTYPE, MFVideoFormat_IYUV);
       CHECK_HR(hr, "Failed to set media sub type.");
 
       hr = pTransform->SetOutputType(0, pChangedOutMediaType, 0);
-      CHECK_HR(hr, "Failed to set new output media type on H.264 decoder MFT.");
+      CHECK_HR(hr, "Failed to set new output media type on MFT.");
 
       hr = pTransform->ProcessMessage(MFT_MESSAGE_COMMAND_FLUSH, NULL);
-      CHECK_HR(hr, "Failed to process FLUSH command on H.264 decoder MFT.");
+      CHECK_HR(hr, "Failed to process FLUSH command on MFT.");
 
       *transformFlushed = TRUE;
     }
     else {
-      printf("H264 stream changed but didn't have the data format change flag set. Don't know what to do.\n");
+      printf("MFT stream changed but didn't have the data format change flag set. Don't know what to do.\n");
       hr = E_NOTIMPL;
     }
 
@@ -945,7 +950,7 @@ HRESULT GetTransformOutput(IMFTransform* pTransform, IMFSample** pOutSample, BOO
     hr = MF_E_TRANSFORM_NEED_MORE_INPUT;
   }
   else {
-    printf("H264 decoder process output error result %.2X, MFT status %.2X.\n", mftProcessOutput, processOutputStatus);
+    printf("MFT ProcessOutput error result %.2X, MFT status %.2X.\n", mftProcessOutput, processOutputStatus);
     hr = mftProcessOutput;
     SAFE_RELEASE(pOutSample);
     *pOutSample = NULL;

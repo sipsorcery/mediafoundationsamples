@@ -44,7 +44,7 @@
 
 #define VIDEO_SAMPLE_WIDTH 640	// Needs to match the video frame width in the input file.
 #define VIDEO_SAMPLE_HEIGHT 360 // Needs to match the video frame height in the input file.
-#define SAMPLE_COUNT 1000
+#define SAMPLE_COUNT 10000
 #define SOURCE_FILENAME L"../MediaFiles/big_buck_bunny.mp4"
 #define CAPTURE_FILENAME "rawframes.yuv"
 
@@ -151,7 +151,27 @@ int _tmain(int argc, _TCHAR* argv[])
 
     if (flags & MF_SOURCE_READERF_STREAMTICK)
     {
-      printf("Stream tick.\n");
+      printf("\tStream tick.\n");
+    }
+    if (flags & MF_SOURCE_READERF_ENDOFSTREAM)
+    {
+      printf("\tEnd of stream.\n");
+      break;
+    }
+    if (flags & MF_SOURCE_READERF_NEWSTREAM)
+    {
+      printf("\tNew stream.\n");
+      break;
+    }
+    if (flags & MF_SOURCE_READERF_NATIVEMEDIATYPECHANGED)
+    {
+      printf("\tNative type changed.\n");
+      break;
+    }
+    if (flags & MF_SOURCE_READERF_CURRENTMEDIATYPECHANGED)
+    {
+      printf("\tCurrent type changed.\n");
+      break;
     }
 
     if (pVideoSample)
@@ -173,7 +193,6 @@ int _tmain(int argc, _TCHAR* argv[])
        "The H264 decoder ProcessInput call failed.");
 
       HRESULT getOutputResult = S_OK;
-
       while (getOutputResult == S_OK) {
 
         getOutputResult = GetTransformOutput(pDecoderTransform, &pH264DecodeOutSample, &h264DecodeTransformFlushed);
@@ -198,10 +217,10 @@ int _tmain(int argc, _TCHAR* argv[])
       }
 
       sampleCount++;
-
-      SAFE_RELEASE(pVideoSample);
-      SAFE_RELEASE(pCopyVideoSample);
     }
+
+    SAFE_RELEASE(pVideoSample);
+    SAFE_RELEASE(pCopyVideoSample);
   }
 
   outputBuffer.close();
