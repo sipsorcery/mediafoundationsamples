@@ -2,7 +2,7 @@
 
 Official samples are available [here](https://github.com/microsoft/Windows-classic-samples/tree/master/Samples/Win7Samples/multimedia/mediafoundation) and a brief overview web page [here](https://docs.microsoft.com/en-us/windows/win32/medfound/media-foundation-sdk-samples).
 
-A set of minimal sample apps that demonstrate how to use certain parts of Microsoft's Windows Media Foundation API. The original motivation for these samples was an attempt to find a way to stream audio and video from a webcam, encoded as H264 and/or VP8, over RTP and then render at the remote destination. As of **January 2020** this goal has **NOT** been achieved.
+A set of minimal sample apps that demonstrate how to use certain parts of Microsoft's Windows Media Foundation API. The original motivation for these samples was an attempt to find a way to stream audio and video from a webcam, encoded as H264 and/or VP8, over RTP and then render at the remote destination. As of January 2020 the MFWebCamRtp sample has been used to stream H264 samples from a webcam source to ffplay.
 
 ### Rendering
 
@@ -38,7 +38,7 @@ A set of minimal sample apps that demonstrate how to use certain parts of Micros
 
  - MFH264RoundTrip - Captures video frames, H264 encode to byte array, decode to YUV (replicates encode, transmit, decode).
 
- - MFWebCamRtp - **Work In Progress**. Stream mp4 file to ffplay with RTP stream.
+ - MFWebCamRtp - Stream webcam video over RTP to ffplay.
  
  
 

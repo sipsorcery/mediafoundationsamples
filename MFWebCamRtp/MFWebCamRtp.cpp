@@ -2,13 +2,14 @@
 * Filename: MFWebCamRtp.cpp
 *
 * Description:
-* This file contains a C++ console application that captures the realtime video 
-* stream from a webcam using Windows Media Foundation, encodes it as H264 and then 
+* This file contains a C++ console application that captures the realtime video
+* stream from a webcam using Windows Media Foundation, encodes it as H264 and then
 * transmits it to an RTP end point.
 *
 * To view the RTP feed produced by this sample the steps are:
-* 1. Download ffplay from http://ffmpeg.zeranoe.com/builds/ (the static build has 
+* 1. Download ffplay from http://ffmpeg.zeranoe.com/builds/ (the static build has
 *    a ready to go ffplay executable),
+*
 * 2. Create a file called test.sdp with contents as below:
 * v=0
 * o=-0 0 IN IP4 127.0.0.1
@@ -18,8 +19,9 @@
 * m=video 1234 RTP/AVP 96
 * a=rtpmap:96 H264/90000
 * a=fmtp:96 packetization-mode=1
+*
 * 3. Start ffplay BEFORE running this sample:
-* ffplay -i test.sdp -x 800 -y 600 -profile:v baseline
+* fffplay -i test.sdp -x 640 -y 480 -profile:v baseline -protocol_whitelist "file,rtp,udp"
 *
 * Status: Not Working.
 *
@@ -29,9 +31,14 @@
 * History:
 * 07 Sep 2015	  Aaron Clauson	  Created, Hobart, Australia.
 * 04 Jan 2020		Aaron Clauson		Removed live555 (sledgehammer for a nail for this sample).
+* 10 Jan 2020   Aaron Clauson   Added rudimentary RTP packetisation (suitbale for proof of concept only).
 *
 * License: Public Domain (no warranty, use at own risk)
 /******************************************************************************/
+
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
 
 #include "../Common/MFUtility.h"
 
@@ -43,6 +50,9 @@
 #include <mferror.h>
 #include <wmcodecdsp.h>
 #include <codecapi.h>
+#include <winsock2.h>
+#include <ws2tcpip.h>
+#include <iphlpapi.h>
 
 #pragma comment(lib, "mf.lib")
 #pragma comment(lib, "mfplat.lib")
@@ -50,13 +60,57 @@
 #pragma comment(lib, "mfreadwrite.lib")
 #pragma comment(lib, "mfuuid.lib")
 #pragma comment(lib, "wmcodecdspuuid.lib")
+#pragma comment(lib, "Ws2_32.lib")
 
 #define WEBCAM_DEVICE_INDEX 0	    // Adjust according to desired video capture device.
 #define OUTPUT_FRAME_WIDTH 640		// Adjust if the webcam does not support this frame width.
 #define OUTPUT_FRAME_HEIGHT 480		// Adjust if the webcam does not support this frame height.
 #define OUTPUT_FRAME_RATE 30      // Adjust if the webcam does not support this frame rate.
+#define RTP_MAX_PAYLOAD 1400      // Maximum size of an RTP packet, needs to be under the Ethernet MTU.
+#define RTP_HEADER_LENGTH 12
+#define RTP_VERSION 2
+#define RTP_PAYLOAD_ID 96         // Needs to match the attribute set in the SDP (a=rtpmap:96 H264/90000).
+#define H264_RTP_HEADER_LENGTH 2
+#define FFPLAY_RTP_PORT 1234      // The port this sample will send to.
 
-int _tmain(int argc, _TCHAR* argv[])
+/**
+* Minimal 12 byte RTP header structure. No facility for extensions etc.
+*/
+class RtpHeader
+{
+public:
+  uint8_t Version = RTP_VERSION;   // 2 bits.
+  uint8_t PaddingFlag  = 0;        // 1 bit.
+  uint8_t HeaderExtensionFlag = 0; // 1 bit.
+  uint8_t CSRCCount = 0;           // 4 bits.
+  uint8_t MarkerBit = 0;           // 1 bit.
+  uint8_t PayloadType = 0;         // 7 bits.
+  uint16_t SeqNum = 0;             // 16 bits.
+  uint32_t Timestamp = 0;          // 32 bits.
+  uint32_t SyncSource = 0;         // 32 bits.
+
+  void Serialise(uint8_t** buf)
+  {
+    *buf = (uint8_t*)calloc(RTP_HEADER_LENGTH, 1);
+    *(*buf) = (Version << 6 & 0xC0) | (PaddingFlag << 5 & 0x20) | (HeaderExtensionFlag << 4 & 0x10) | (CSRCCount & 0x0f);
+    *(*buf + 1) = (MarkerBit << 7 & 0x80) | (PayloadType & 0x7f);
+    *(*buf + 2) = SeqNum >> 8 & 0xff;
+    *(*buf + 3) = SeqNum & 0xff;
+    *(*buf + 4) = Timestamp >> 24 & 0xff;
+    *(*buf + 5) = Timestamp >> 16 & 0xff;
+    *(*buf + 6) = Timestamp >> 8 & 0xff;
+    *(*buf + 7) = Timestamp & 0xff;
+    *(*buf + 8) = SyncSource >> 24 & 0xff;
+    *(*buf + 9) = SyncSource >> 16 & 0xff;
+    *(*buf + 10) = SyncSource >> 8 & 0xff;
+    *(*buf + 11) = SyncSource & 0xff;
+  }
+};
+
+// Forward function definitions.
+HRESULT SendH264RtpSample(SOCKET socket, sockaddr_in & dst, IMFSample* pH264Sample, uint32_t ssrc, uint32_t timestamp, uint16_t* seqNum);
+
+int main()
 {
   IMFMediaSource* pVideoSource = NULL;
   IMFSourceReader* pVideoReader = NULL;
@@ -71,11 +125,56 @@ int _tmain(int argc, _TCHAR* argv[])
   IMFMediaType* pDecInputMediaType = NULL, * pDecOutputMediaType = NULL;
   DWORD mftStatus = 0;
 
+  WSADATA wsaData;
+  uint16_t rtpSsrc = 3334; // Supposed to be pseudo-random.
+  uint16_t rtpSeqNum = 0;
+  uint32_t rtpTimestamp = 0;
+  SOCKET rtpSocket = INVALID_SOCKET;
+  sockaddr_in service, dest;
+
   CHECK_HR(CoInitializeEx(NULL, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE),
     "COM initialisation failed.");
 
   CHECK_HR(MFStartup(MF_VERSION),
     "Media Foundation initialisation failed.");
+
+  // Initialize Winsock
+  int iResult = WSAStartup(MAKEWORD(2, 2), &wsaData);
+  if (iResult != 0) {
+    printf("WSAStartup failed: %d\n", iResult);
+    return 1;
+  }
+
+  rtpSocket = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+  if (rtpSocket == INVALID_SOCKET) {
+    wprintf(L"socket function failed with error: %u\n", WSAGetLastError());
+    WSACleanup();
+    return 1;
+  }
+
+  //----------------------
+    // The sockaddr_in structure specifies the address family,
+    // IP address, and port for the socket that is being bound.
+  service.sin_family = AF_INET;
+  service.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+  service.sin_port = 0; // htons(27015);
+
+  //----------------------
+  // Bind the socket.
+  iResult = bind(rtpSocket, (SOCKADDR*)&service, sizeof (service));
+  if (iResult == SOCKET_ERROR) {
+    wprintf(L"bind failed with error %u\n", WSAGetLastError());
+    closesocket(rtpSocket);
+    WSACleanup();
+    return 1;
+  }
+  else {
+    wprintf(L"bind returned success\n");
+  }
+
+  dest.sin_family = AF_INET;
+  inet_pton(AF_INET, "127.0.0.1", &dest.sin_addr.s_addr);
+  dest.sin_port = htons(FFPLAY_RTP_PORT);
 
   // Get video capture device.
   CHECK_HR(GetVideoSourceFromDevice(WEBCAM_DEVICE_INDEX, &pVideoSource, &pVideoReader),
@@ -184,13 +283,11 @@ int _tmain(int argc, _TCHAR* argv[])
 
     if (pVideoSample)
     {
-      printf("Sample %i.\n", sampleCount);
-
       CHECK_HR(pVideoSample->SetSampleTime(llVideoTimeStamp), "Error setting the video sample time.");
       CHECK_HR(pVideoSample->GetSampleDuration(&llSampleDuration), "Error getting video sample duration.");
       CHECK_HR(pVideoSample->GetSampleFlags(&sampleFlags), "Error getting sample flags.");
 
-      printf("Sample count %d, Sample flags %d, sample duration %I64d, sample time %I64d\n", sampleCount, sampleFlags, llSampleDuration, llVideoTimeStamp);
+      //printf("Sample count %d, Sample flags %d, sample duration %I64d, sample time %I64d\n", sampleCount, sampleFlags, llSampleDuration, llVideoTimeStamp);
 
       // Apply the H264 encoder transform
       CHECK_HR(pEncoderTransfrom->ProcessInput(0, pVideoSample, 0),
@@ -213,10 +310,10 @@ int _tmain(int argc, _TCHAR* argv[])
           printf("H264 encoder transform flushed stream.\n");
         }
         else if (pH264EncodeOutSample != NULL) {
-          
-          printf("H264 sample ready for transmission.\n");
 
+          //printf("H264 sample ready for transmission.\n");
 
+          SendH264RtpSample(rtpSocket, dest, pH264EncodeOutSample, rtpSsrc, (uint32_t)(llVideoTimeStamp / 10000), &rtpSeqNum);
         }
 
         SAFE_RELEASE(pH264EncodeOutSample);
@@ -245,5 +342,88 @@ done:
   SAFE_RELEASE(pMFTInputMediaType);
   SAFE_RELEASE(pMFTOutputMediaType);
 
+  WSACleanup();
+
   return 0;
+}
+
+HRESULT SendH264RtpSample(SOCKET socket, sockaddr_in& dst, IMFSample* pH264Sample, uint32_t ssrc, uint32_t timestamp, uint16_t* seqNum)
+{
+  static uint16_t h264HeaderStart = 0x1c89;   // Start RTP packet in frame 0x1c 0x89
+  static uint16_t h264HeaderMiddle = 0x1c09;  // Middle RTP packet in frame 0x1c 0x09
+  static uint16_t h264HeaderEnd = 0x1c49;     // Last RTP packet in frame 0x1c 0x49
+
+  HRESULT hr = S_OK;
+
+  IMFMediaBuffer* buf = NULL;
+  DWORD frameLength = 0, buffCurrLen = 0, buffMaxLen = 0;
+  byte* frameData = NULL;
+
+  hr = pH264Sample->ConvertToContiguousBuffer(&buf);
+  CHECK_HR(hr, "ConvertToContiguousBuffer failed.");
+
+  hr = buf->GetCurrentLength(&frameLength);
+  CHECK_HR(hr, "Get buffer length failed.");
+
+  hr = buf->Lock(&frameData, &buffMaxLen, &buffCurrLen);
+  CHECK_HR(hr, "Failed to lock H264 sample buffer.");
+
+  hr = buf->Unlock();
+  CHECK_HR(hr, "Failed to unlock video sample buffer.");
+
+  uint16_t pktSeqNum = *seqNum;
+
+  for (UINT offset = 0; offset < frameLength;)
+  {
+    bool isLast = ((offset + RTP_MAX_PAYLOAD) >= frameLength); // Note can be first and last packet at same time if a small frame.
+    UINT payloadLength = !isLast ? RTP_MAX_PAYLOAD : frameLength - offset;
+
+    RtpHeader rtpHeader;
+    rtpHeader.SyncSource = ssrc;
+    rtpHeader.SeqNum = pktSeqNum++;
+    rtpHeader.Timestamp = timestamp;
+    rtpHeader.MarkerBit = 0;    // Set on first and last packet in frame.
+    rtpHeader.PayloadType = RTP_PAYLOAD_ID;
+
+    uint16_t h264Header = h264HeaderMiddle;
+
+    if (isLast)
+    {
+      // This is the First AND Last RTP packet in the frame.
+      h264Header = h264HeaderEnd;
+      rtpHeader.MarkerBit = 1;
+    }
+    else if (offset == 0)
+    {
+      h264Header = h264HeaderStart;
+      rtpHeader.MarkerBit = 1;
+    }
+
+    uint8_t* hdrSerialised = NULL;
+    rtpHeader.Serialise(&hdrSerialised);
+
+    int rtpPacketSize = RTP_HEADER_LENGTH + H264_RTP_HEADER_LENGTH + payloadLength;
+    uint8_t* rtpPacket = (uint8_t*)malloc(rtpPacketSize);
+    memcpy_s(rtpPacket, rtpPacketSize, hdrSerialised, RTP_HEADER_LENGTH);
+    rtpPacket[RTP_HEADER_LENGTH] = (byte)(h264Header >> 8 & 0xff);
+    rtpPacket[RTP_HEADER_LENGTH + 1] = (byte)(h264Header & 0xff);
+    memcpy_s(&rtpPacket[RTP_HEADER_LENGTH + H264_RTP_HEADER_LENGTH], payloadLength, &frameData[offset], payloadLength);
+
+    //printf("Sending RTP packet, length %d.\n", rtpPacketSize);
+
+    sendto(socket, (const char *)rtpPacket, rtpPacketSize, 0, (sockaddr*)&dst, sizeof(dst));
+
+    offset += payloadLength;
+
+    free(hdrSerialised);
+    free(rtpPacket);
+  }
+
+done:
+
+  SAFE_RELEASE(buf);
+
+  *seqNum = pktSeqNum;
+
+  return hr;
 }

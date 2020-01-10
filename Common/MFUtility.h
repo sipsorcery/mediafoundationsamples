@@ -971,7 +971,7 @@ HRESULT GetTransformOutput(IMFTransform* pTransform, IMFSample** pOutSample, BOO
 
   auto mftProcessOutput = pTransform->ProcessOutput(0, 1, &outputDataBuffer, &processOutputStatus);
 
-  printf("Process output result %.2X, MFT status %.2X.\n", mftProcessOutput, processOutputStatus);
+  //printf("Process output result %.2X, MFT status %.2X.\n", mftProcessOutput, processOutputStatus);
 
   if (mftProcessOutput == S_OK) {
     // Sample is ready and allocated on the transform output buffer.
@@ -1024,4 +1024,30 @@ done:
   SAFE_RELEASE(pChangedOutMediaType);
 
   return hr;
+}
+
+/**
+* Gets the hex string representation of a byte array.
+* @param[in] start: pointer to the start of the byte array.
+* @param[in] length: length of the byte array.
+* @@Returns a null terminated char array.
+*/
+unsigned char* HexStr(const uint8_t* start, size_t length)
+{
+  // Each byte requires 2 characters. Add one additional byte to hold the null termination char.
+  unsigned char* hexStr = (unsigned char*)calloc((size_t)(length * 2 + 1), 1);
+
+  static const char hexmap[16] = { '0', '1', '2', '3', '4', '5', '6', '7',
+    '8', '9', 'a', 'b', 'c', 'd', 'e', 'f' };
+
+  int posn = 0;
+  for (int i = 0; i < length; i++)
+  {
+    unsigned char val = (unsigned char)(*(start + i));
+    hexStr[posn] = (hexmap[val >> 4]);
+    hexStr[posn + 1] = (hexmap[val & 15]);
+    posn += 2;
+  }
+
+  return hexStr;
 }
