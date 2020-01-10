@@ -1,25 +1,22 @@
 /******************************************************************************
-* Filename: MFVideoEVRWebcam.cpp
+* Filename: MFVideoEVRWebcamMFT.cpp
 *
 * Description:
-* This file contains a C++ console application that is attempting to play the
-* video stream from a webcam soruceusing the Windows Media Foundation
-* API. Specifically it's attempting to use the Enhanced Video Renderer
-* (https://msdn.microsoft.com/en-us/library/windows/desktop/ms694916%28v=vs.85%29.aspx)
-* to playback the video. The difference between this sample and the MFVideoEVR sample
-* is that the webcam and the EVR can potentially have different pixel formats and 
-* require a colour conversion transform between the source and sink.
+* This file contains a C++ console application that plays the
+* video stream from a webcam source on the Enhanced Video Renderer.
+* 
+* The difference between this sample and the MFVideoEVRWebcam sample is that
+* this one manually wires up the colour converter Transform. Turns out this
+* isn't required if the source reader is created with the attribute
+* MF_SOURCE_READER_ENABLE_VIDEO_PROCESSING set. That was only discovered 
+* afterwards and this sample still serves as a useful demonstration of how
+* to wire up an MFT transform.
 *
 * Author:
 * Aaron Clauson (aaron@sipsorcery.com)
 *
 * History:
-* 01 Jan 2015	  Aaron Clauson	  Created, Hobart, Australia.
-* 15 Sep 2015   Aaron Clauson		Trying with webcam instead of file but still not working.
-* 05 Jan 2020   Aaron Clauson   Applied Stack Overflow answer from https://bit.ly/2sQoMuP, 
-*                               now works for a file source.
-* 07 Jan 2020   Aaron Clauson   Split from MFVideoEVR sample. File and webcam sources
-*                               require different treatment, large enough to warrant new sample.
+* 10 Jan 2020	  Aaron Clauson	  Created, Dublin, Ireland.
 *
 * License: Public Domain (no warranty, use at own risk)
 /******************************************************************************/
@@ -60,7 +57,6 @@
 // Forward function definitions.
 DWORD InitializeWindow(LPVOID lpThreadParameter);
 HRESULT GetVideoSourceFromDevice(UINT nDevice, IMFMediaSource** ppVideoSource, IMFSourceReader** ppVideoReader);
-HRESULT SetupSourceReaderMediaType(IMFSourceReader* pSourceReader, UINT32* puiWidth, UINT32* puiHeight);
 
 // Constants 
 const WCHAR CLASS_NAME[] = L"MFVideoEVRWebcam Window Class";
@@ -224,14 +220,8 @@ int main()
   CHECK_HR(pSinkMediaTypeHandler->SetCurrentMediaType(pImfEvrSinkType),
     "Failed to set input media type on EVR sink.");
 
-  //CHECK_HR(pVideoReader->SetCurrentMediaType((DWORD)MF_SOURCE_READER_FIRST_VIDEO_STREAM, NULL, pWebcamSourceType),
-  //  "Failed to set output media type on source reader.");
-
-  UINT32 uiWidth = 0;
-  UINT32 uiHeight = 0;
-
-  CHECK_HR(SetupSourceReaderMediaType(pVideoReader, &uiWidth, &uiHeight),
-    "Faild to set up the video source reader.");
+  CHECK_HR(pVideoReader->SetCurrentMediaType((DWORD)MF_SOURCE_READER_FIRST_VIDEO_STREAM, NULL, pWebcamSourceType),
+    "Failed to set output media type on source reader.");
 
   std::cout << "EVR input media type defined as:" << std::endl;
   std::cout << GetMediaTypeDescription(pImfEvrSinkType) << std::endl << std::endl;
@@ -438,51 +428,6 @@ done:
   return 0;
 }
 
-HRESULT SetupSourceReaderMediaType(IMFSourceReader* pSourceReader, UINT32* puiWidth, UINT32* puiHeight) {
-
-  IMFMediaType* pMediaType = NULL;
-  IMFMediaType* pVideoMediaType = NULL;
-
-  HRESULT hr = pSourceReader->GetCurrentMediaType((DWORD)MF_SOURCE_READER_FIRST_VIDEO_STREAM, &pMediaType);
-  if (FAILED(hr)) { goto done; }
-
-  hr = MFGetAttributeSize(pMediaType, MF_MT_FRAME_SIZE, puiWidth, puiHeight);
-  if (FAILED(hr)) { goto done; }
-
-  hr = MFCreateMediaType(&pVideoMediaType);
-  if (FAILED(hr)) { goto done; }
-
-  hr = pVideoMediaType->SetGUID(MF_MT_MAJOR_TYPE, MFMediaType_Video);
-  if (FAILED(hr)) { goto done; }
-
-  hr = pVideoMediaType->SetGUID(MF_MT_SUBTYPE, MFVideoFormat_RGB32);
-  if (FAILED(hr)) { goto done; }
-
-  hr = pVideoMediaType->SetUINT32(MF_MT_INTERLACE_MODE, MFVideoInterlace_Progressive);
-  if (FAILED(hr)) { goto done; }
-
-  hr = pVideoMediaType->SetUINT32(MF_MT_ALL_SAMPLES_INDEPENDENT, TRUE);
-  if (FAILED(hr)) { goto done; }
-
-  hr = MFSetAttributeRatio(pVideoMediaType, MF_MT_PIXEL_ASPECT_RATIO, 1, 1);
-  if (FAILED(hr)) { goto done; }
-
-  hr = CopyAttribute(pMediaType, pVideoMediaType, MF_MT_FRAME_SIZE);
-  if (FAILED(hr)) { goto done; }
-
-  hr = CopyAttribute(pMediaType, pVideoMediaType, MF_MT_FRAME_RATE);
-  if (FAILED(hr)) { goto done; }
-
-  hr = pSourceReader->SetCurrentMediaType((DWORD)MF_SOURCE_READER_FIRST_VIDEO_STREAM, NULL, pVideoMediaType);
-
-done:
-
-  SAFE_RELEASE(pVideoMediaType);
-  SAFE_RELEASE(pMediaType);
-
-  return hr;
-}
-
 /**
 * Gets a video source reader from a device such as a webcam.
 * @param[in] nDevice: the video device index to attempt to get the source reader for.
@@ -497,7 +442,6 @@ HRESULT GetVideoSourceFromDevice(UINT nDevice, IMFMediaSource** ppVideoSource, I
   IMFActivate** videoDevices = NULL;
   WCHAR* webcamFriendlyName;
   UINT nameLength = 0;
-  IMFAttributes* pAttributes = NULL;
 
   HRESULT hr = S_OK;
 
@@ -522,16 +466,10 @@ HRESULT GetVideoSourceFromDevice(UINT nDevice, IMFMediaSource** ppVideoSource, I
   hr = videoDevices[nDevice]->ActivateObject(IID_PPV_ARGS(ppVideoSource));
   CHECK_HR(hr, "Error activating video device.");
 
-  CHECK_HR(MFCreateAttributes(&pAttributes, 1),
-    "Failed to create attribtues.");
-
-  CHECK_HR(pAttributes->SetUINT32(MF_SOURCE_READER_ENABLE_VIDEO_PROCESSING, 1),
-    "Failed to set enable video processing attribute.");
-
   // Create a source reader.
   hr = MFCreateSourceReaderFromMediaSource(
     *ppVideoSource,
-    pAttributes,
+    videoConfig,
     ppVideoReader);
   CHECK_HR(hr, "Error creating video source reader.");
 
@@ -539,7 +477,6 @@ done:
 
   SAFE_RELEASE(videoConfig);
   SAFE_RELEASE(videoDevices);
-  SAFE_RELEASE(pAttributes);
 
   return hr;
 }
