@@ -13,7 +13,8 @@
 * Aaron Clauson (aaron@sipsorcery.com)
 *
 * History:
-* 26 Feb 2015		Aaron Clauson	Created.
+* 26 Feb 2015		Aaron Clauson	Created, Hobart, Australia.
+* 10 Jan 2020		Aaron Clauson	Added defines for webcam resolution.
 *
 * License: Public Domain (no warranty, use at own risk)
 /******************************************************************************/
@@ -28,7 +29,7 @@
 #include <mfreadwrite.h>
 #include <mferror.h>
 #include <wmcodecdsp.h>
-#include <fstream>
+#include <codecapi.h>
 
 #pragma comment(lib, "mf.lib")
 #pragma comment(lib, "mfplat.lib")
@@ -40,17 +41,20 @@
 #define WEBCAM_DEVICE_INDEX 0	// Adjust according to desired video capture device.
 #define SAMPLE_COUNT 100			// Adjust depending on number of samples to capture.
 #define CAPTURE_FILENAME L"capture.mp4"
+#define OUTPUT_FRAME_WIDTH 640		// Adjust if the webcam does not support this frame width.
+#define OUTPUT_FRAME_HEIGHT 480		// Adjust if the webcam does not support this frame height.
+#define OUTPUT_FRAME_RATE 30      // Adjust if the webcam does not support this frame rate.
 
 int main()
 {
-	IMFMediaSource *videoSource = NULL;
+	IMFMediaSource *pVideoSource = NULL;
 	UINT32 videoDeviceCount = 0;
 	IMFAttributes *videoConfig = NULL;
 	IMFActivate **videoDevices = NULL;
-	IMFSourceReader *videoReader = NULL;
+	IMFSourceReader *pVideoReader = NULL;
 	WCHAR *webcamFriendlyName;
-	IMFMediaType*videoSourceOutputType = NULL;
-	IMFSinkWriter *pWriter;
+	IMFMediaType* pSourceOutputType = NULL;
+	IMFSinkWriter *pWriter = NULL;
 	IMFMediaType *pVideoOutType = NULL;
 	DWORD writerVideoStreamIndex = 0;
 	UINT webcamNameLength = 0;
@@ -79,20 +83,26 @@ int main()
 
 	wprintf(L"First available webcam: %s\n", webcamFriendlyName);
 
-	CHECK_HR(videoDevices[WEBCAM_DEVICE_INDEX]->ActivateObject(IID_PPV_ARGS(&videoSource)), 
+	CHECK_HR(videoDevices[WEBCAM_DEVICE_INDEX]->ActivateObject(IID_PPV_ARGS(&pVideoSource)), 
 		"Error activating video device.");
 
 	// Create a source reader.
 	CHECK_HR(MFCreateSourceReaderFromMediaSource(
-		videoSource,
+		pVideoSource,
 		videoConfig,
-		&videoReader), 
+		&pVideoReader), 
 		"Error creating video source reader.");
 
-	CHECK_HR(videoReader->GetCurrentMediaType(
-		(DWORD)MF_SOURCE_READER_FIRST_VIDEO_STREAM,
-		&videoSourceOutputType), 
-		"Error retrieving current media type from first video stream.");
+	// Note the webcam needs to support this media type. 
+	MFCreateMediaType(&pSourceOutputType);
+	CHECK_HR(pSourceOutputType->SetGUID(MF_MT_MAJOR_TYPE, MFMediaType_Video), "Failed to set major video type.");
+	CHECK_HR(pSourceOutputType->SetGUID(MF_MT_SUBTYPE, WMMEDIASUBTYPE_I420), "Failed to set video sub type to I420.");
+	//CHECK_HR(pSourceOutputType->SetGUID(MF_MT_SUBTYPE, MFVideoFormat_RGB24), "Failed to set video sub type.");
+	CHECK_HR(MFSetAttributeRatio(pSourceOutputType, MF_MT_FRAME_RATE, OUTPUT_FRAME_RATE, 1), "Failed to set frame rate on source reader out type.");
+	CHECK_HR(MFSetAttributeSize(pSourceOutputType, MF_MT_FRAME_SIZE, OUTPUT_FRAME_WIDTH, OUTPUT_FRAME_HEIGHT), "Failed to set frame size.");
+
+	CHECK_HR(pVideoReader->SetCurrentMediaType(0, NULL, pSourceOutputType),
+		"Failed to set media type on source reader.");
 
 	// Create the MP4 sink writer.
 	CHECK_HR(MFCreateSinkWriterFromURL(
@@ -116,14 +126,17 @@ int main()
 
 	// Configure the output video type on the sink writer.
 	CHECK_HR(MFCreateMediaType(&pVideoOutType), "Configure encoder failed to create media type for video output sink.");
-	CHECK_HR(videoSourceOutputType->CopyAllItems(pVideoOutType), "Error copying media type attributes from source output media type.");
+	CHECK_HR(pSourceOutputType->CopyAllItems(pVideoOutType), "Error copying media type attributes from source output media type.");
 	// Only thing we want to change from source to sink is to get an mp4 output.
 	CHECK_HR(pVideoOutType->SetGUID(MF_MT_SUBTYPE, MFVideoFormat_H264), "Failed to set video writer attribute, video format (H.264).");
+	CHECK_HR(pVideoOutType->SetUINT32(MF_MT_AVG_BITRATE, 240000), "Error setting average bit rate.");
+	CHECK_HR(pVideoOutType->SetUINT32(MF_MT_INTERLACE_MODE, 2), "Error setting interlace mode.");
+	CHECK_HR(MFSetAttributeRatio(pVideoOutType, MF_MT_MPEG2_PROFILE, eAVEncH264VProfile_Base, 1), "Failed to set profile on H264 MFT out type.");
 
 	CHECK_HR(pWriter->AddStream(pVideoOutType, &writerVideoStreamIndex), 
 		"Failed to add the video stream to the sink writer.");
 	
-	CHECK_HR(pWriter->SetInputMediaType(writerVideoStreamIndex, videoSourceOutputType, NULL), 
+	CHECK_HR(pWriter->SetInputMediaType(writerVideoStreamIndex, pSourceOutputType, NULL),
 		"Error setting the sink writer video input type.");
 
 	CHECK_HR(pWriter->BeginWriting(), 
@@ -139,7 +152,7 @@ int main()
 
 	while (sampleCount < SAMPLE_COUNT)
 	{
-		CHECK_HR(videoReader->ReadSample(
+		CHECK_HR(pVideoReader->ReadSample(
 			MF_SOURCE_READER_ANY_STREAM,				// Stream index.
 			0,																	// Flags.
 			&streamIndex,												// Receives the actual stream index. 
@@ -175,12 +188,12 @@ done:
 	printf("finished.\n");
 	auto c = getchar();
 
-	SAFE_RELEASE(videoSource);
+	SAFE_RELEASE(pVideoSource);
 	SAFE_RELEASE(videoConfig);
 	SAFE_RELEASE(videoDevices);
-	SAFE_RELEASE(videoReader);
+	SAFE_RELEASE(pVideoReader);
 	SAFE_RELEASE(pVideoOutType);
-	SAFE_RELEASE(videoSourceOutputType);
+	SAFE_RELEASE(pSourceOutputType);
 	SAFE_RELEASE(pWriter);
 
 	return 0;
