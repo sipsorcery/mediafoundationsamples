@@ -3,11 +3,13 @@
 *
 * Description:
 * This file contains a C++ console application that is attempting to play the
-* video stream from a webcam soruceusing the Windows Media Foundation
+* video stream from a webcam soruce using the Windows Media Foundation
 * API. Specifically it's attempting to use the Enhanced Video Renderer
 * (https://msdn.microsoft.com/en-us/library/windows/desktop/ms694916%28v=vs.85%29.aspx)
-* to playback the video. The difference between this sample and the MFVideoEVR sample
-* is that the webcam and the EVR can potentially have different pixel formats and 
+* to playback the video.
+
+* The difference between this sample and the MFVideoEVR sample
+* is that the webcam and the EVR can potentially have different pixel formats and
 * require a colour conversion transform between the source and sink.
 *
 * Author:
@@ -16,10 +18,12 @@
 * History:
 * 01 Jan 2015	  Aaron Clauson	  Created, Hobart, Australia.
 * 15 Sep 2015   Aaron Clauson		Trying with webcam instead of file but still not working.
-* 05 Jan 2020   Aaron Clauson   Applied Stack Overflow answer from https://bit.ly/2sQoMuP, 
+* 05 Jan 2020   Aaron Clauson   Applied Stack Overflow answer from https://bit.ly/2sQoMuP,
 *                               now works for a file source.
 * 07 Jan 2020   Aaron Clauson   Split from MFVideoEVR sample. File and webcam sources
 *                               require different treatment, large enough to warrant new sample.
+* 10 Jan 2020   Aaron Clauson   Removed colour conversion MFT after discovering setting the
+*                               MF_SOURCE_READER_ENABLE_VIDEO_PROCESSING on the reader does the same thing.
 *
 * License: Public Domain (no warranty, use at own risk)
 /******************************************************************************/
@@ -60,7 +64,6 @@
 // Forward function definitions.
 DWORD InitializeWindow(LPVOID lpThreadParameter);
 HRESULT GetVideoSourceFromDevice(UINT nDevice, IMFMediaSource** ppVideoSource, IMFSourceReader** ppVideoReader);
-HRESULT SetupSourceReaderMediaType(IMFSourceReader* pSourceReader, UINT32* puiWidth, UINT32* puiHeight);
 
 // Constants 
 const WCHAR CLASS_NAME[] = L"MFVideoEVRWebcam Window Class";
@@ -73,7 +76,7 @@ int main()
 {
   IMFMediaSource* pVideoSource = NULL;
   IMFSourceReader* pVideoReader = NULL;
-  IMFMediaType* videoSourceOutputType = NULL, * pvideoSourceModType = NULL;
+  IMFMediaType* videoSourceOutputType = NULL, * pvideoSourceModType = NULL, * pWebcamSourceType = NULL;
   IMFMediaType* pImfEvrSinkType = NULL;
   IMFMediaType* pHintMediaType = NULL;
   IMFMediaSink* pVideoSink = NULL;
@@ -94,21 +97,16 @@ int main()
   RECT rc = { 0, 0, VIDEO_WIDTH, VIDEO_HEIGHT };
   BOOL fSelected = false;
 
-  IUnknown* colorConvTransformUnk = NULL;
-  IMFTransform* pColorConvTransform = NULL; // This is colour converter MFT is used to convert between the webcam pixel format and RGB32.
-  IMFMediaType* pDecInputMediaType = NULL, * pDecOutputMediaType = NULL;
-  IMFMediaType* pWebcamSourceType = NULL;
-
   CHECK_HR(CoInitializeEx(NULL, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE),
     "COM initialisation failed.");
 
   CHECK_HR(MFStartup(MF_VERSION),
     "Media Foundation initialisation failed.");
 
-  /*CHECK_HR(ListCaptureDevices(DeviceType::Video), 
+  /*CHECK_HR(ListCaptureDevices(DeviceType::Video),
     "Error listing video capture devices.");*/
 
-  // Need the color converter DSP for conversions between YUV, RGB etc.
+    // Need the color converter DSP for conversions between YUV, RGB etc.
   CHECK_HR(MFTRegisterLocalByCLSID(
     __uuidof(CColorConvertDMO),
     MFT_CATEGORY_VIDEO_PROCESSOR,
@@ -214,56 +212,21 @@ int main()
   CHECK_HR(MFSetAttributeRatio(pImfEvrSinkType, MF_MT_PIXEL_ASPECT_RATIO, 1, 1), "Failed to set pixel aspect ratio attribute on media type.");
   CHECK_HR(MFSetAttributeSize(pImfEvrSinkType, MF_MT_FRAME_SIZE, VIDEO_WIDTH, VIDEO_HEIGHT), "Failed to set the frame size attribute on media type.");
   CHECK_HR(MFSetAttributeSize(pImfEvrSinkType, MF_MT_FRAME_RATE, VIDEO_FRAME_RATE, 1), "Failed to set the frame rate attribute on media type.");
-  CHECK_HR(CopyAttribute(videoSourceOutputType, pImfEvrSinkType, MF_MT_DEFAULT_STRIDE), "Failed to copy default stride attribute.");
+  //CHECK_HR(CopyAttribute(videoSourceOutputType, pImfEvrSinkType, MF_MT_DEFAULT_STRIDE), "Failed to copy default stride attribute.");
 
   // My webcam supports the same media type as the EVR input type except for the pixel format.
   CHECK_HR(MFCreateMediaType(&pWebcamSourceType), "Failed to create webcam output media type.");
   CHECK_HR(pImfEvrSinkType->CopyAllItems(pWebcamSourceType), "Error copying media type attributes from EVR input to webcam output media type.");
-  CHECK_HR(CopyAttribute(videoSourceOutputType, pWebcamSourceType, MF_MT_SUBTYPE), "Failed to set video sub-type attribute on webcam media type.");
+  //CHECK_HR(CopyAttribute(videoSourceOutputType, pWebcamSourceType, MF_MT_SUBTYPE), "Failed to set video sub-type attribute on webcam media type.");
 
   CHECK_HR(pSinkMediaTypeHandler->SetCurrentMediaType(pImfEvrSinkType),
     "Failed to set input media type on EVR sink.");
 
-  //CHECK_HR(pVideoReader->SetCurrentMediaType((DWORD)MF_SOURCE_READER_FIRST_VIDEO_STREAM, NULL, pWebcamSourceType),
-  //  "Failed to set output media type on source reader.");
-
-  UINT32 uiWidth = 0;
-  UINT32 uiHeight = 0;
-
-  CHECK_HR(SetupSourceReaderMediaType(pVideoReader, &uiWidth, &uiHeight),
-    "Faild to set up the video source reader.");
+  CHECK_HR(pVideoReader->SetCurrentMediaType((DWORD)MF_SOURCE_READER_FIRST_VIDEO_STREAM, NULL, pWebcamSourceType),
+    "Failed to set output media type on source reader.");
 
   std::cout << "EVR input media type defined as:" << std::endl;
   std::cout << GetMediaTypeDescription(pImfEvrSinkType) << std::endl << std::endl;
-
-  // ----- Create an MFT to convert between webcam pixel format and RGB32. -----
-
-  CHECK_HR(CoCreateInstance(CLSID_CColorConvertDMO, NULL, CLSCTX_INPROC_SERVER,
-    IID_IUnknown, (void**)&colorConvTransformUnk),
-    "Failed to create colour converter MFT.");
-
-  CHECK_HR(colorConvTransformUnk->QueryInterface(IID_PPV_ARGS(&pColorConvTransform)),
-    "Failed to get IMFTransform interface from colour converter MFT object.");
-
-  MFCreateMediaType(&pDecInputMediaType);
-  CHECK_HR(pWebcamSourceType->CopyAllItems(pDecInputMediaType), "Error copying media type attributes to colour converter input media type.");
-  CHECK_HR(pColorConvTransform->SetInputType(0, pDecInputMediaType, 0), "Failed to set input media type on colour converter MFT.");
-
-  // The output from the transform is an exact copy of the media type set as the input for the EVR stream sink.
-  MFCreateMediaType(&pDecOutputMediaType);
-  CHECK_HR(pImfEvrSinkType->CopyAllItems(pDecOutputMediaType), "Error copying media type attributes to colour converter output media type.");
-  CHECK_HR(pColorConvTransform->SetOutputType(0, pDecOutputMediaType, 0), "Failed to set output media type on colour converter MFT.");
-
-  DWORD mftStatus = 0;
-  CHECK_HR(pColorConvTransform->GetInputStatus(0, &mftStatus), "Failed to get input status from colour converter MFT.");
-  if (MFT_INPUT_STATUS_ACCEPT_DATA != mftStatus) {
-    printf("Colour converter MFT is not accepting data.\n");
-    goto done;
-  }
-
-  CHECK_HR(pColorConvTransform->ProcessMessage(MFT_MESSAGE_COMMAND_FLUSH, NULL), "Failed to process FLUSH command on colour converter MFT.");
-  CHECK_HR(pColorConvTransform->ProcessMessage(MFT_MESSAGE_NOTIFY_BEGIN_STREAMING, NULL), "Failed to process BEGIN_STREAMING command on colour converter MFT.");
-  CHECK_HR(pColorConvTransform->ProcessMessage(MFT_MESSAGE_NOTIFY_START_OF_STREAM, NULL), "Failed to process START_OF_STREAM command on colour converter MFT.");
 
   // ----- Source and sink now configured. Set up remaining infrastructure and then start sampling. -----
 
@@ -283,7 +246,7 @@ int main()
   CHECK_HR(pClock->Start(0), "Error starting presentation clock.");
 
   // Start the sample read-write loop.
-  IMFSample* videoSample = NULL;
+  IMFSample* pVideoSample = NULL;
   IMFMediaBuffer* pDstBuffer = NULL;
   IMF2DBuffer* p2DBuffer = NULL;
   BYTE* pbBuffer = NULL;
@@ -302,7 +265,7 @@ int main()
       &streamIndex,                   // Receives the actual stream index. 
       &flags,                         // Receives status flags.
       &llTimeStamp,                   // Receives the time stamp.
-      &videoSample                    // Receives the sample or NULL.
+      &pVideoSample                    // Receives the sample or NULL.
     ), "Error reading video sample.");
 
     if (flags & MF_SOURCE_READERF_ENDOFSTREAM)
@@ -315,7 +278,7 @@ int main()
       printf("Stream tick.\n");
     }
 
-    if (!videoSample)
+    if (!pVideoSample)
     {
       printf("Null video sample.\n");
     }
@@ -326,86 +289,48 @@ int main()
 
       // ----- Video source sample. -----
 
-      CHECK_HR(videoSample->SetSampleTime(llTimeStamp), "Error setting the video sample time.");
-      CHECK_HR(videoSample->GetSampleDuration(&sampleDuration), "Failed to get video sample duration.");
+      CHECK_HR(pVideoSample->SetSampleTime(llTimeStamp), "Error setting the video sample time.");
+      CHECK_HR(pVideoSample->GetSampleDuration(&sampleDuration), "Failed to get video sample duration.");
 
       //printf("Attempting to convert sample, sample duration %llu, sample time %llu, evr timestamp %llu.\n", sampleDuration, llTimeStamp, evrTimestamp);
 
       // Relies on the webcam pixel format being RGB24.
       //CreateBitmapFromSample(L"capture_premft.bmp", VIDEO_WIDTH, VIDEO_HEIGHT, 24, videoSample);
 
-      // ----- Apply colour conversion transfrom. -----
+      // ----- Make Direct3D sample. -----
+      IMFMediaBuffer* buf = NULL;
+      DWORD bufLength = 0, pByteBufLength = 0;
+      BYTE* pByteBuf = NULL;
 
-      CHECK_HR(pColorConvTransform->ProcessInput(0, videoSample, NULL), "The colour conversion decoder ProcessInput call failed.");
+      CHECK_HR(pVideoSample->ConvertToContiguousBuffer(&buf), "ConvertToContiguousBuffer failed.");
+      CHECK_HR(buf->GetCurrentLength(&bufLength), "Get buffer length failed.");
+      CHECK_HR(buf->Lock(&pByteBuf, NULL, &pByteBufLength), "Failed to lock sample buffer.");
+      CHECK_HR(buf->Unlock(), "Failed to unlock source buffer.");
 
-      IMFSample* mftOutSample = NULL;
-      IMFMediaBuffer* mftOutBuffer = NULL;
-      MFT_OUTPUT_STREAM_INFO StreamInfo;
-      MFT_OUTPUT_DATA_BUFFER outputDataBuffer;
-      DWORD processOutputStatus = 0;
+      //CHECK_HR(pD3DVideoSample->SetSampleTime(llTimeStamp), "Failed to set D3D video sample time.");
+      CHECK_HR(pD3DVideoSample->SetSampleTime(evrTimestamp), "Failed to set D3D video sample time.");
+      CHECK_HR(pD3DVideoSample->SetSampleDuration(sampleDuration), "Failed to set D3D video sample duration.");
+      CHECK_HR(pD3DVideoSample->GetBufferByIndex(0, &pDstBuffer), "Failed to get destination buffer.");
+      CHECK_HR(pDstBuffer->QueryInterface(IID_PPV_ARGS(&p2DBuffer)), "Failed to get pointer to 2D buffer.");
+      CHECK_HR(p2DBuffer->ContiguousCopyFrom(pByteBuf, pByteBufLength), "Failed to copy D2D buffer (check the source media type matches the EVR input type).");
 
-      CHECK_HR(pColorConvTransform->GetOutputStreamInfo(0, &StreamInfo), "Failed to get output stream info from colour conversion MFT.");
-      CHECK_HR(MFCreateSample(&mftOutSample), "Failed to create MF sample.");
-      CHECK_HR(MFCreateMemoryBuffer(StreamInfo.cbSize, &mftOutBuffer), "Failed to create memory buffer.");
-      CHECK_HR(mftOutSample->AddBuffer(mftOutBuffer), "Failed to add sample to buffer.");
-      outputDataBuffer.dwStreamID = 0;
-      outputDataBuffer.dwStatus = 0;
-      outputDataBuffer.pEvents = NULL;
-      outputDataBuffer.pSample = mftOutSample;
+      //CHECK_HR(videoSample->GetUINT32(MFSampleExtension_FrameCorruption, &uiAttribute), "Failed to get frame corruption attribute.");
+      //CHECK_HR(pD3DVideoSample->SetUINT32(MFSampleExtension_FrameCorruption, uiAttribute), "Failed to set frame corruption attribute.");
+      CHECK_HR(pVideoSample->GetUINT32(MFSampleExtension_Discontinuity, &uiAttribute), "Failed to get discontinuity attribute.");
+      CHECK_HR(pD3DVideoSample->SetUINT32(MFSampleExtension_Discontinuity, uiAttribute), "Failed to set discontinuity attribute.");
+      CHECK_HR(pVideoSample->GetUINT32(MFSampleExtension_CleanPoint, &uiAttribute), "Failed to get clean point attribute.");
+      CHECK_HR(pD3DVideoSample->SetUINT32(MFSampleExtension_CleanPoint, uiAttribute), "Failed to set clean point attribute.");
 
-      auto mftProcessOutput = pColorConvTransform->ProcessOutput(0, 1, &outputDataBuffer, &processOutputStatus);
+      CHECK_HR(pStreamSink->ProcessSample(pD3DVideoSample), "Streamsink process sample failed.");
 
-      //printf("Colour conversion result %.2X, MFT status %.2X.\n", mftProcessOutput, processOutputStatus);
+      SAFE_RELEASE(buf);
 
-      if (mftProcessOutput == S_OK)
-      {
-        // ----- Make Direct3D sample. -----
-        IMFMediaBuffer* buf = NULL;
-        DWORD bufLength = 0, pByteBufLength = 0;
-        BYTE* pByteBuf = NULL;
-
-        CHECK_HR(mftOutSample->ConvertToContiguousBuffer(&buf), "ConvertToContiguousBuffer failed.");
-        CHECK_HR(buf->GetCurrentLength(&bufLength), "Get buffer length failed.");
-        CHECK_HR(buf->Lock(&pByteBuf, NULL, &pByteBufLength), "Failed to lock sample buffer.");
-
-        //printf("Color converted sample size %u.\n", bufLength);
-
-        //CreateBitmapFile(L"capture_postmft.bmp", VIDEO_WIDTH, VIDEO_HEIGHT, 32, pByteBuf, pByteBufLength);
-
-        //CHECK_HR(pD3DVideoSample->SetSampleTime(llTimeStamp), "Failed to set D3D video sample time.");
-        CHECK_HR(pD3DVideoSample->SetSampleTime(evrTimestamp), "Failed to set D3D video sample time.");
-        CHECK_HR(pD3DVideoSample->SetSampleDuration(sampleDuration), "Failed to set D3D video sample duration.");
-        CHECK_HR(pD3DVideoSample->GetBufferByIndex(0, &pDstBuffer), "Failed to get destination buffer.");
-        CHECK_HR(pDstBuffer->QueryInterface(IID_PPV_ARGS(&p2DBuffer)), "Failed to get pointer to 2D buffer.");
-        CHECK_HR(p2DBuffer->ContiguousCopyFrom(pByteBuf, pByteBufLength), "Failed to copy D2D buffer.");
-
-        //CHECK_HR(videoSample->GetUINT32(MFSampleExtension_FrameCorruption, &uiAttribute), "Failed to get frame corruption attribute.");
-        //CHECK_HR(pD3DVideoSample->SetUINT32(MFSampleExtension_FrameCorruption, uiAttribute), "Failed to set frame corruption attribute.");
-        CHECK_HR(videoSample->GetUINT32(MFSampleExtension_Discontinuity, &uiAttribute), "Failed to get discontinuity attribute.");
-        CHECK_HR(pD3DVideoSample->SetUINT32(MFSampleExtension_Discontinuity, uiAttribute), "Failed to set discontinuity attribute.");
-        CHECK_HR(videoSample->GetUINT32(MFSampleExtension_CleanPoint, &uiAttribute), "Failed to get clean point attribute.");
-        CHECK_HR(pD3DVideoSample->SetUINT32(MFSampleExtension_CleanPoint, uiAttribute), "Failed to set clean point attribute.");
-
-        CHECK_HR(pStreamSink->ProcessSample(pD3DVideoSample), "Streamsink process sample failed.");
-
-        CHECK_HR(buf->Unlock(), "Failed to unlock source buffer.");
-
-        SAFE_RELEASE(buf);
-        SAFE_RELEASE(mftOutSample);
-        SAFE_RELEASE(mftOutBuffer);
-      }
-      else {
-        printf("Colour conversion failed with %.2X.\n", mftProcessOutput);
-        break;
-      }
-     
-      Sleep(sampleDuration / 10000); // Duration is given in 10's of nano seconds.
       evrTimestamp += sampleDuration;
     }
 
     SAFE_RELEASE(p2DBuffer);
     SAFE_RELEASE(pDstBuffer);
-    SAFE_RELEASE(videoSample);
+    SAFE_RELEASE(pVideoSample);
   }
 
 done:
@@ -436,51 +361,6 @@ done:
   SAFE_RELEASE(pD3DVideoSample);
 
   return 0;
-}
-
-HRESULT SetupSourceReaderMediaType(IMFSourceReader* pSourceReader, UINT32* puiWidth, UINT32* puiHeight) {
-
-  IMFMediaType* pMediaType = NULL;
-  IMFMediaType* pVideoMediaType = NULL;
-
-  HRESULT hr = pSourceReader->GetCurrentMediaType((DWORD)MF_SOURCE_READER_FIRST_VIDEO_STREAM, &pMediaType);
-  if (FAILED(hr)) { goto done; }
-
-  hr = MFGetAttributeSize(pMediaType, MF_MT_FRAME_SIZE, puiWidth, puiHeight);
-  if (FAILED(hr)) { goto done; }
-
-  hr = MFCreateMediaType(&pVideoMediaType);
-  if (FAILED(hr)) { goto done; }
-
-  hr = pVideoMediaType->SetGUID(MF_MT_MAJOR_TYPE, MFMediaType_Video);
-  if (FAILED(hr)) { goto done; }
-
-  hr = pVideoMediaType->SetGUID(MF_MT_SUBTYPE, MFVideoFormat_RGB32);
-  if (FAILED(hr)) { goto done; }
-
-  hr = pVideoMediaType->SetUINT32(MF_MT_INTERLACE_MODE, MFVideoInterlace_Progressive);
-  if (FAILED(hr)) { goto done; }
-
-  hr = pVideoMediaType->SetUINT32(MF_MT_ALL_SAMPLES_INDEPENDENT, TRUE);
-  if (FAILED(hr)) { goto done; }
-
-  hr = MFSetAttributeRatio(pVideoMediaType, MF_MT_PIXEL_ASPECT_RATIO, 1, 1);
-  if (FAILED(hr)) { goto done; }
-
-  hr = CopyAttribute(pMediaType, pVideoMediaType, MF_MT_FRAME_SIZE);
-  if (FAILED(hr)) { goto done; }
-
-  hr = CopyAttribute(pMediaType, pVideoMediaType, MF_MT_FRAME_RATE);
-  if (FAILED(hr)) { goto done; }
-
-  hr = pSourceReader->SetCurrentMediaType((DWORD)MF_SOURCE_READER_FIRST_VIDEO_STREAM, NULL, pVideoMediaType);
-
-done:
-
-  SAFE_RELEASE(pVideoMediaType);
-  SAFE_RELEASE(pMediaType);
-
-  return hr;
 }
 
 /**
@@ -525,6 +405,8 @@ HRESULT GetVideoSourceFromDevice(UINT nDevice, IMFMediaSource** ppVideoSource, I
   CHECK_HR(MFCreateAttributes(&pAttributes, 1),
     "Failed to create attribtues.");
 
+  // Adding this attribute creates a video source reader that will handle
+  // colour conversion and avoid the need to manually convert between RGB24 and RGB32 etc.
   CHECK_HR(pAttributes->SetUINT32(MF_SOURCE_READER_ENABLE_VIDEO_PROCESSING, 1),
     "Failed to set enable video processing attribute.");
 

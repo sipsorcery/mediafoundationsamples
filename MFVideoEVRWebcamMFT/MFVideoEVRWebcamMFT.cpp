@@ -389,7 +389,6 @@ int main()
         break;
       }
      
-      Sleep(sampleDuration / 10000); // Duration is given in 10's of nano seconds.
       evrTimestamp += sampleDuration;
     }
 
