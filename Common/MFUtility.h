@@ -597,6 +597,69 @@ done:
 }
 
 /**
+* Gets a video source reader from a device such as a webcam.
+* @param[in] nDevice: the video device index to attempt to get the source reader for.
+* @param[out] ppVideoSource: will be set with the source for the reader if successful.
+* @param[out] ppVideoReader: will be set with the reader if successful.
+* @@Returns S_OK if successful or an error code if not.
+*/
+HRESULT GetVideoSourceFromDevice(UINT nDevice, IMFMediaSource** ppVideoSource, IMFSourceReader** ppVideoReader)
+{
+  UINT32 videoDeviceCount = 0;
+  IMFAttributes* videoConfig = NULL;
+  IMFActivate** videoDevices = NULL;
+  WCHAR* webcamFriendlyName;
+  UINT nameLength = 0;
+  IMFAttributes* pAttributes = NULL;
+
+  HRESULT hr = S_OK;
+
+  // Get the first available webcam.
+  hr = MFCreateAttributes(&videoConfig, 1);
+  CHECK_HR(hr, "Error creating video configuation.");
+
+  // Request video capture devices.
+  hr = videoConfig->SetGUID(
+    MF_DEVSOURCE_ATTRIBUTE_SOURCE_TYPE,
+    MF_DEVSOURCE_ATTRIBUTE_SOURCE_TYPE_VIDCAP_GUID);
+  CHECK_HR(hr, "Error initialising video configuration object.");
+
+  hr = MFEnumDeviceSources(videoConfig, &videoDevices, &videoDeviceCount);
+  CHECK_HR(hr, "Error enumerating video devices.");
+
+  hr = videoDevices[nDevice]->GetAllocatedString(MF_DEVSOURCE_ATTRIBUTE_FRIENDLY_NAME, &webcamFriendlyName, &nameLength);
+  CHECK_HR(hr, "Error retrieving vide device friendly name.\n");
+
+  wprintf(L"First available webcam: %s\n", webcamFriendlyName);
+
+  hr = videoDevices[nDevice]->ActivateObject(IID_PPV_ARGS(ppVideoSource));
+  CHECK_HR(hr, "Error activating video device.");
+
+  CHECK_HR(MFCreateAttributes(&pAttributes, 1),
+    "Failed to create attribtues.");
+
+  // Adding this attribute creates a video source reader that will handle
+  // colour conversion and avoid the need to manually convert between RGB24 and RGB32 etc.
+  CHECK_HR(pAttributes->SetUINT32(MF_SOURCE_READER_ENABLE_VIDEO_PROCESSING, 1),
+    "Failed to set enable video processing attribute.");
+
+  // Create a source reader.
+  hr = MFCreateSourceReaderFromMediaSource(
+    *ppVideoSource,
+    pAttributes,
+    ppVideoReader);
+  CHECK_HR(hr, "Error creating video source reader.");
+
+done:
+
+  SAFE_RELEASE(videoConfig);
+  SAFE_RELEASE(videoDevices);
+  SAFE_RELEASE(pAttributes);
+
+  return hr;
+}
+
+/**
 * Copies a media type attribute from an input media type to an output media type. Useful when setting
 * up the video sink and where a number of the video sink input attributes need to be duplicated on the
 * video writer attributes.
