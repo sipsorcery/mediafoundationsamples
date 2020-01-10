@@ -50,9 +50,8 @@ int _tmain(int argc, _TCHAR* argv[])
   IMFMediaType* videoSourceOutputType = NULL, * pSrcOutMediaType = NULL;
   IUnknown* spTransformUnk = NULL;
   IMFTransform* pTransform = NULL; //< this is H264 Encoder MFT
-  IWMResamplerProps* spResamplerProps = NULL;
   IMFMediaType* pMFTInputMediaType = NULL, * pMFTOutputMediaType = NULL;
-  IMFSinkWriter* pWriter;
+  IMFSinkWriter* pWriter = NULL;
   IMFMediaType* pVideoOutType = NULL;
   DWORD writerVideoStreamIndex = 0;
   DWORD totalSampleBufferSize = 0;
@@ -71,12 +70,13 @@ int _tmain(int argc, _TCHAR* argv[])
 
   CHECK_HR(pVideoReader->GetCurrentMediaType(
     (DWORD)MF_SOURCE_READER_FIRST_VIDEO_STREAM,
-    &videoSourceOutputType), "Error retrieving current media type from first video stream.\n");
+    &videoSourceOutputType), "Error retrieving current media type from first video stream.");
 
   // Note the webcam needs to support this media type. The list of media types supported can be obtained using the ListTypes function in MFUtility.h.
   CHECK_HR(MFCreateMediaType(&pSrcOutMediaType), "Failed to create media type.");
   CHECK_HR(pSrcOutMediaType->SetGUID(MF_MT_MAJOR_TYPE, MFMediaType_Video), "Failed to set major video type.");
   CHECK_HR(pSrcOutMediaType->SetGUID(MF_MT_SUBTYPE, WMMEDIASUBTYPE_I420), "Failed to set video sub type to I420.");
+  CHECK_HR(MFSetAttributeRatio(pSrcOutMediaType, MF_MT_FRAME_RATE, 30, 1), "Failed to set frame rate on source reader out type.");
   CHECK_HR(MFSetAttributeSize(pSrcOutMediaType, MF_MT_FRAME_SIZE, OUTPUT_FRAME_WIDTH, OUTPUT_FRAME_HEIGHT), "Failed to set frame size.");
 
   CHECK_HR(pVideoReader->SetCurrentMediaType(0, NULL, pSrcOutMediaType), "Failed to set media type on source reader.");
@@ -92,22 +92,18 @@ int _tmain(int argc, _TCHAR* argv[])
   CHECK_HR(pMFTOutputMediaType->SetGUID(MF_MT_MAJOR_TYPE, MFMediaType_Video), "Failed to set major video type.");
   CHECK_HR(pMFTOutputMediaType->SetGUID(MF_MT_SUBTYPE, MFVideoFormat_H264), "Failed to set video sub type to H264.");
   CHECK_HR(pMFTOutputMediaType->SetUINT32(MF_MT_AVG_BITRATE, 240000), "Failed to set video avg bit rate.");
-  CHECK_HR(MFSetAttributeSize(pMFTOutputMediaType, MF_MT_FRAME_SIZE, OUTPUT_FRAME_WIDTH, OUTPUT_FRAME_HEIGHT), "Failed to set frame size on H264 MFT out type.");
-  CHECK_HR(MFSetAttributeRatio(pMFTOutputMediaType, MF_MT_FRAME_RATE, 30, 1), "Failed to set frame rate on H264 MFT out type.");
-  CHECK_HR(MFSetAttributeRatio(pMFTOutputMediaType, MF_MT_PIXEL_ASPECT_RATIO, 1, 1), "Failed to set aspect ratio on H264 MFT out type.");
   CHECK_HR(pMFTOutputMediaType->SetUINT32(MF_MT_INTERLACE_MODE, 2), "Failed to set video interlace mode.");
   CHECK_HR(pMFTOutputMediaType->SetUINT32(MF_MT_ALL_SAMPLES_INDEPENDENT, TRUE), "Failed to set all samples independent.");
+  CHECK_HR(CopyAttribute(pSrcOutMediaType, pMFTOutputMediaType, MF_MT_FRAME_RATE), "Failed to copy frame rate media attribute.");
+  CHECK_HR(CopyAttribute(pSrcOutMediaType, pMFTOutputMediaType, MF_MT_FRAME_SIZE), "Failed to copy frame size media attribute.");
 
   CHECK_HR(pTransform->SetOutputType(0, pMFTOutputMediaType, 0),
     "Failed to set output media type on H.264 encoder MFT.");
 
   CHECK_HR(MFCreateMediaType(&pMFTInputMediaType), "Failed to create media type.");
-  CHECK_HR(pMFTInputMediaType->SetGUID(MF_MT_MAJOR_TYPE, MFMediaType_Video), "Failed to set major video type.");
+  CHECK_HR(pSrcOutMediaType->CopyAllItems(pMFTInputMediaType),
+    "Failed to copy media type from source output to mft input type.");
   CHECK_HR(pMFTInputMediaType->SetGUID(MF_MT_SUBTYPE, MFVideoFormat_IYUV), "Failed to set video sub type to YUV.");
-  CHECK_HR(MFSetAttributeSize(pMFTInputMediaType, MF_MT_FRAME_SIZE, 640, 480), "Failed to set frame size on H264 MFT out type.");
-  CHECK_HR(MFSetAttributeRatio(pMFTInputMediaType, MF_MT_FRAME_RATE, 30, 1), "Failed to set frame rate on H264 MFT out type.");
-  CHECK_HR(MFSetAttributeRatio(pMFTInputMediaType, MF_MT_PIXEL_ASPECT_RATIO, 1, 1), "Failed to set aspect ratio on H264 MFT out type.");
-  CHECK_HR(pMFTInputMediaType->SetUINT32(MF_MT_INTERLACE_MODE, 2), "Failed to set video interlace mode.");;
 
   CHECK_HR(pTransform->SetInputType(0, pMFTInputMediaType, 0),
     "Failed to set input media type on H.264 encoder MFT.");
@@ -131,26 +127,11 @@ int _tmain(int argc, _TCHAR* argv[])
     &pWriter),
     "Error creating mp4 sink writer.");
 
-  CHECK_HR(MFTRegisterLocalByCLSID(
-    __uuidof(CColorConvertDMO),
-    MFT_CATEGORY_VIDEO_PROCESSOR,
-    L"",
-    MFT_ENUM_FLAG_SYNCMFT,
-    0,
-    NULL,
-    0,
-    NULL),
-    "Error registering colour converter DSP.");
-
   // Configure the output video type on the sink writer.
   CHECK_HR(MFCreateMediaType(&pVideoOutType), "Configure encoder failed to create media type for video output sink.");
-  CHECK_HR(pVideoOutType->SetGUID(MF_MT_MAJOR_TYPE, MFMediaType_Video), "Failed to set video writer attribute, media type.");
-  CHECK_HR(pVideoOutType->SetGUID(MF_MT_SUBTYPE, MFVideoFormat_H264), "Failed to set video writer attribute, video format (H.264).");
-  CHECK_HR(pVideoOutType->SetUINT32(MF_MT_AVG_BITRATE, 240 * 1000), "Failed to set video writer attribute, bit rate.");
-  CHECK_HR(CopyAttribute(videoSourceOutputType, pVideoOutType, MF_MT_FRAME_SIZE), "Failed to set video writer attribute, frame size.");
-  CHECK_HR(CopyAttribute(videoSourceOutputType, pVideoOutType, MF_MT_FRAME_RATE), "Failed to set video writer attribute, frame rate.");
-  CHECK_HR(CopyAttribute(videoSourceOutputType, pVideoOutType, MF_MT_PIXEL_ASPECT_RATIO), "Failed to set video writer attribute, aspect ratio.");
-  CHECK_HR(CopyAttribute(videoSourceOutputType, pVideoOutType, MF_MT_INTERLACE_MODE), "Failed to set video writer attribute, interlace mode.");
+
+  CHECK_HR(pMFTOutputMediaType->CopyAllItems(pVideoOutType),
+    "Failed to copy all media types from MFT output to sink input.");
 
   CHECK_HR(pWriter->AddStream(pVideoOutType, &writerVideoStreamIndex),
     "Failed to add the video stream to the sink writer.");
@@ -271,7 +252,6 @@ done:
   SAFE_RELEASE(pSrcOutMediaType);
   SAFE_RELEASE(spTransformUnk);
   SAFE_RELEASE(pTransform);
-  SAFE_RELEASE(spResamplerProps);
   SAFE_RELEASE(pMFTInputMediaType);
   SAFE_RELEASE(pMFTOutputMediaType);
   SAFE_RELEASE(pWriter);
