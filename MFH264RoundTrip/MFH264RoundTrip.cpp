@@ -29,6 +29,7 @@
 #include <mfreadwrite.h>
 #include <mferror.h>
 #include <wmcodecdsp.h>
+#include <codecapi.h>
 
 #include <fstream>
 #include <iostream>
@@ -40,21 +41,21 @@
 #pragma comment(lib, "mfuuid.lib")
 #pragma comment(lib, "wmcodecdspuuid.lib")
 
-#define WEBCAM_DEVICE_INDEX 0	// Adjust according to desired video capture device.
-#define SAMPLE_COUNT 1000			// Adjust depending on number of samples to capture.
+#define WEBCAM_DEVICE_INDEX 0	    // Adjust according to desired video capture device.
+#define SAMPLE_COUNT 1000			    // Adjust depending on number of samples to capture.
+#define OUTPUT_FRAME_WIDTH 640		// Adjust if the webcam does not support this frame width.
+#define OUTPUT_FRAME_HEIGHT 480		// Adjust if the webcam does not support this frame height.
+#define OUTPUT_FRAME_RATE 30      // Adjust if the webcam does not support this frame rate.
 #define CAPTURE_FILENAME "rawframes.yuv"
 
 int _tmain(int argc, _TCHAR* argv[])
 {
   std::ofstream outputBuffer(CAPTURE_FILENAME, std::ios::out | std::ios::binary);
 
-  IMFMediaSource* videoSource = NULL;
-  UINT32 videoDeviceCount = 0;
-  IMFAttributes* videoConfig = NULL;
-  IMFActivate** videoDevices = NULL;
-  IMFSourceReader* videoReader = NULL;
+  IMFMediaSource* pVideoSource = NULL;
+  IMFSourceReader* pVideoReader = NULL;
   WCHAR* webcamFriendlyName;
-  IMFMediaType* videoSourceOutputType = NULL, * pSrcOutMediaType = NULL;
+  IMFMediaType* pSrcOutMediaType = NULL;
   IUnknown* spEncoderTransfromUnk = NULL;
   IMFTransform* pEncoderTransfrom = NULL; // This is H264 Encoder MFT.
   IMFMediaType* pMFTInputMediaType = NULL, * pMFTOutputMediaType = NULL;
@@ -70,66 +71,33 @@ int _tmain(int argc, _TCHAR* argv[])
   CHECK_HR(MFStartup(MF_VERSION),
     "Media Foundation initialisation failed.");
 
-  // Get the first available webcam.
-  CHECK_HR(MFCreateAttributes(&videoConfig, 1),
-    "Error creating video configuation.");
-
-  // Request video capture devices.
-  CHECK_HR(videoConfig->SetGUID(
-    MF_DEVSOURCE_ATTRIBUTE_SOURCE_TYPE,
-    MF_DEVSOURCE_ATTRIBUTE_SOURCE_TYPE_VIDCAP_GUID),
-    "Error initialising video configuration object.");
-
-  CHECK_HR(MFEnumDeviceSources(videoConfig, &videoDevices, &videoDeviceCount),
-    "Error enumerating video devices.");
-
-  CHECK_HR(videoDevices[WEBCAM_DEVICE_INDEX]->GetAllocatedString(MF_DEVSOURCE_ATTRIBUTE_FRIENDLY_NAME, &webcamFriendlyName, &friendlyNameLength),
-    "Error retrieving vide device friendly name.");
-
-  wprintf(L"First available webcam: %s\n", webcamFriendlyName);
-
-  CHECK_HR(videoDevices[WEBCAM_DEVICE_INDEX]->ActivateObject(IID_PPV_ARGS(&videoSource)),
-    "Error activating video device.");
-
-  // Create a source reader.
-  CHECK_HR(MFCreateSourceReaderFromMediaSource(
-    videoSource,
-    videoConfig,
-    &videoReader),
-    "Error creating video source reader.");
-
-  CHECK_HR(videoReader->GetCurrentMediaType(
-    (DWORD)MF_SOURCE_READER_FIRST_VIDEO_STREAM,
-    &videoSourceOutputType),
-    "Error retrieving current media type from first video stream.");
+  // Get video capture device.
+  CHECK_HR(GetVideoSourceFromDevice(WEBCAM_DEVICE_INDEX, &pVideoSource, &pVideoReader),
+    "Failed to get webcam video source.");
 
   // Note the webcam needs to support this media type. 
   // The list of media types supported can be obtained using the ListTypes function in MFUtility.h.
   MFCreateMediaType(&pSrcOutMediaType);
-  pSrcOutMediaType->SetGUID(MF_MT_MAJOR_TYPE, MFMediaType_Video);
-  pSrcOutMediaType->SetGUID(MF_MT_SUBTYPE, WMMEDIASUBTYPE_I420);
-  MFSetAttributeSize(pSrcOutMediaType, MF_MT_FRAME_SIZE, 640, 480);
+  CHECK_HR(pSrcOutMediaType->SetGUID(MF_MT_MAJOR_TYPE, MFMediaType_Video), "Failed to set major video type.");
+  CHECK_HR(pSrcOutMediaType->SetGUID(MF_MT_SUBTYPE, WMMEDIASUBTYPE_I420), "Failed to set video sub type to I420.");
+  CHECK_HR(MFSetAttributeRatio(pSrcOutMediaType, MF_MT_FRAME_RATE, OUTPUT_FRAME_RATE, 1), "Failed to set frame rate on source reader out type.");
+  CHECK_HR(MFSetAttributeSize(pSrcOutMediaType, MF_MT_FRAME_SIZE, OUTPUT_FRAME_WIDTH, OUTPUT_FRAME_HEIGHT), "Failed to set frame size.");
 
-  CHECK_HR(videoReader->SetCurrentMediaType(0, NULL, pSrcOutMediaType),
+  CHECK_HR(pVideoReader->SetCurrentMediaType(0, NULL, pSrcOutMediaType),
     "Failed to set media type on source reader.");
 
-  CHECK_HR(videoReader->GetCurrentMediaType(
-    (DWORD)MF_SOURCE_READER_FIRST_VIDEO_STREAM,
-    &videoSourceOutputType),
-    "Error retrieving current media type from first video stream.");
+  printf("%s\n", GetMediaTypeDescription(pSrcOutMediaType).c_str());
 
-  std::cout << GetMediaTypeDescription(videoSourceOutputType) << std::endl;
-
-  CHECK_HR(MFTRegisterLocalByCLSID(
-    __uuidof(CColorConvertDMO),
-    MFT_CATEGORY_VIDEO_PROCESSOR,
-    L"",
-    MFT_ENUM_FLAG_SYNCMFT,
-    0,
-    NULL,
-    0,
-    NULL
-  ), "Error registering colour converter DSP.\n");
+  //CHECK_HR(MFTRegisterLocalByCLSID(
+  //  __uuidof(CColorConvertDMO),
+  //  MFT_CATEGORY_VIDEO_PROCESSOR,
+  //  L"",
+  //  MFT_ENUM_FLAG_SYNCMFT,
+  //  0,
+  //  NULL,
+  //  0,
+  //  NULL
+  //), "Error registering colour converter DSP.\n");
 
   // Create H.264 encoder.
   CHECK_HR(CoCreateInstance(CLSID_CMSH264EncoderMFT, NULL, CLSCTX_INPROC_SERVER,
@@ -140,23 +108,18 @@ int _tmain(int argc, _TCHAR* argv[])
     "Failed to get IMFTransform interface from H264 encoder MFT object.");
 
   MFCreateMediaType(&pMFTInputMediaType);
-  //CHECK_HR(videoSourceOutputType->CopyAllItems(pMFTInputMediaType), "Error copying media type attributes to decoder output media type.\n");
-  pMFTInputMediaType->SetGUID(MF_MT_MAJOR_TYPE, MFMediaType_Video);
-  pMFTInputMediaType->SetGUID(MF_MT_SUBTYPE, MFVideoFormat_IYUV);
-  CHECK_HR(MFSetAttributeSize(pMFTInputMediaType, MF_MT_FRAME_SIZE, 640, 480), "Failed to set frame size on H264 MFT out type.");
-  CHECK_HR(MFSetAttributeRatio(pMFTInputMediaType, MF_MT_FRAME_RATE, 30, 1), "Failed to set frame rate on H264 MFT out type.");
-  CHECK_HR(MFSetAttributeRatio(pMFTInputMediaType, MF_MT_PIXEL_ASPECT_RATIO, 1, 1), "Failed to set aspect ratio on H264 MFT out type.");
-  pMFTInputMediaType->SetUINT32(MF_MT_INTERLACE_MODE, 2);
+  CHECK_HR(pSrcOutMediaType->CopyAllItems(pMFTInputMediaType), "Error copying media type attributes to decoder output media type.");
+  CHECK_HR(pMFTInputMediaType->SetGUID(MF_MT_SUBTYPE, MFVideoFormat_IYUV), "Error setting video subtype.");
 
   MFCreateMediaType(&pMFTOutputMediaType);
-  pMFTOutputMediaType->SetGUID(MF_MT_MAJOR_TYPE, MFMediaType_Video);
-  pMFTOutputMediaType->SetGUID(MF_MT_SUBTYPE, MFVideoFormat_H264);
-  pMFTOutputMediaType->SetUINT32(MF_MT_AVG_BITRATE, 240000);
-  CHECK_HR(MFSetAttributeSize(pMFTOutputMediaType, MF_MT_FRAME_SIZE, 640, 480), "Failed to set frame size on H264 MFT out type.");
-  CHECK_HR(MFSetAttributeRatio(pMFTOutputMediaType, MF_MT_FRAME_RATE, 30, 1), "Failed to set frame rate on H264 MFT out type.");
-  CHECK_HR(MFSetAttributeRatio(pMFTOutputMediaType, MF_MT_PIXEL_ASPECT_RATIO, 1, 1), "Failed to set aspect ratio on H264 MFT out type.");
-  pMFTOutputMediaType->SetUINT32(MF_MT_INTERLACE_MODE, 2);
-  pMFTOutputMediaType->SetUINT32(MF_MT_ALL_SAMPLES_INDEPENDENT, TRUE);
+  CHECK_HR(pMFTInputMediaType->CopyAllItems(pMFTOutputMediaType), "Error copying media type attributes tfrom mft input type to mft output type.");
+  CHECK_HR(pMFTOutputMediaType->SetGUID(MF_MT_SUBTYPE, MFVideoFormat_H264), "Error setting video sub type.");
+  CHECK_HR(pMFTOutputMediaType->SetUINT32(MF_MT_AVG_BITRATE, 240000), "Error setting average bit rate.");
+  CHECK_HR(pMFTOutputMediaType->SetUINT32(MF_MT_INTERLACE_MODE, 2), "Error setting interlace mode.");
+  CHECK_HR(MFSetAttributeRatio(pMFTOutputMediaType, MF_MT_MPEG2_PROFILE, eAVEncH264VProfile_Base, 1), "Failed to set profile on H264 MFT out type.");
+  //CHECK_HR(pMFTOutputMediaType->SetDouble(MF_MT_MPEG2_LEVEL, 3.1), "Failed to set level on H264 MFT out type.\n");
+  //CHECK_HR(pMFTOutputMediaType->SetUINT32(MF_MT_MAX_KEYFRAME_SPACING, 10), "Failed to set key frame interval on H264 MFT out type.\n");
+  //CHECK_HR(pMFTOutputMediaType->SetUINT32(CODECAPI_AVEncCommonQuality, 100), "Failed to set H264 codec qulaity.\n");
 
   std::cout << "H264 encoder output type: " << GetMediaTypeDescription(pMFTOutputMediaType) << std::endl;
 
@@ -216,7 +179,7 @@ int _tmain(int argc, _TCHAR* argv[])
 
   while (sampleCount <= SAMPLE_COUNT)
   {
-    CHECK_HR(videoReader->ReadSample(
+    CHECK_HR(pVideoReader->ReadSample(
       MF_SOURCE_READER_FIRST_VIDEO_STREAM,
       0,                              // Flags.
       &streamIndex,                   // Receives the actual stream index. 
@@ -326,7 +289,7 @@ int _tmain(int argc, _TCHAR* argv[])
 
       // Note: Apart from memory leak issues if the media samples are not released the videoReader->ReadSample
       // blocks when it is unable to allocate a new sample.
-      SAFE_RELEASE(pVideoSample);;
+      SAFE_RELEASE(pVideoSample);
       SAFE_RELEASE(pH264EncodeOutSample);
       SAFE_RELEASE(pH264DecodeOutSample);
     }
@@ -339,11 +302,8 @@ done:
   printf("finished.\n");
   auto c = getchar();
 
-  SAFE_RELEASE(videoSource);
-  SAFE_RELEASE(videoConfig);
-  SAFE_RELEASE(videoDevices);
-  SAFE_RELEASE(videoReader);
-  SAFE_RELEASE(videoSourceOutputType);
+  SAFE_RELEASE(pVideoSource);
+  SAFE_RELEASE(pVideoReader);
   SAFE_RELEASE(pSrcOutMediaType);
   SAFE_RELEASE(spEncoderTransfromUnk);
   SAFE_RELEASE(pEncoderTransfrom);

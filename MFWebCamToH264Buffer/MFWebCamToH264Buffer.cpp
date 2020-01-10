@@ -47,7 +47,7 @@ int _tmain(int argc, _TCHAR* argv[])
   IMFMediaSource* pVideoSource = NULL;
   IMFSourceReader* pVideoReader = NULL;
   WCHAR* webcamFriendlyName;
-  IMFMediaType* videoSourceOutputType = NULL, * pSrcOutMediaType = NULL;
+  IMFMediaType* pSrcOutMediaType = NULL;
   IUnknown* spTransformUnk = NULL;
   IMFTransform* pTransform = NULL; //< this is H264 Encoder MFT
   IMFMediaType* pMFTInputMediaType = NULL, * pMFTOutputMediaType = NULL;
@@ -64,13 +64,9 @@ int _tmain(int argc, _TCHAR* argv[])
   CHECK_HR(MFStartup(MF_VERSION),
     "Media Foundation initialisation failed.");
 
-  // Get video capture devices.
+  // Get video capture device.
   CHECK_HR(GetVideoSourceFromDevice(WEBCAM_DEVICE_INDEX, &pVideoSource, &pVideoReader),
     "Failed to get webcam video source.");
-
-  CHECK_HR(pVideoReader->GetCurrentMediaType(
-    (DWORD)MF_SOURCE_READER_FIRST_VIDEO_STREAM,
-    &videoSourceOutputType), "Error retrieving current media type from first video stream.");
 
   // Note the webcam needs to support this media type. The list of media types supported can be obtained using the ListTypes function in MFUtility.h.
   CHECK_HR(MFCreateMediaType(&pSrcOutMediaType), "Failed to create media type.");
@@ -175,12 +171,12 @@ int _tmain(int argc, _TCHAR* argv[])
 
     if (videoSample)
     {
-      CHECK_HR(videoSample->SetSampleTime(llVideoTimeStamp), "Error setting the video sample time.\n");
-      CHECK_HR(videoSample->GetSampleDuration(&llSampleDuration), "Error getting video sample duration.\n");
+      CHECK_HR(videoSample->SetSampleTime(llVideoTimeStamp), "Error setting the video sample time.");
+      CHECK_HR(videoSample->GetSampleDuration(&llSampleDuration), "Error getting video sample duration.");
 
       // Pass the video sample to the H.264 transform.
 
-      CHECK_HR(pTransform->ProcessInput(0, videoSample, 0), "The resampler H264 ProcessInput call failed.\n");
+      CHECK_HR(pTransform->ProcessInput(0, videoSample, 0), "The resampler H264 ProcessInput call failed.");
 
       auto mftResult = S_OK;
 
@@ -199,8 +195,8 @@ int _tmain(int argc, _TCHAR* argv[])
 
         if (mftResult == S_OK)
         {
-          CHECK_HR(outputDataBuffer.pSample->SetSampleTime(llVideoTimeStamp), "Error setting MFT sample time.\n");
-          CHECK_HR(outputDataBuffer.pSample->SetSampleDuration(llSampleDuration), "Error setting MFT sample duration.\n");
+          CHECK_HR(outputDataBuffer.pSample->SetSampleTime(llVideoTimeStamp), "Error setting MFT sample time.");
+          CHECK_HR(outputDataBuffer.pSample->SetSampleDuration(llSampleDuration), "Error setting MFT sample duration.");
 
           IMFMediaBuffer* buf = NULL;
           DWORD bufLength;
@@ -210,7 +206,7 @@ int _tmain(int argc, _TCHAR* argv[])
           totalSampleBufferSize += bufLength;
 
           printf("Writing sample %i, sample time %I64d, sample duration %I64d, sample size %i.\n", sampleCount, llVideoTimeStamp, llSampleDuration, bufLength);
-          CHECK_HR(pWriter->WriteSample(writerVideoStreamIndex, outputDataBuffer.pSample), "The stream sink writer was not happy with the sample.\n");
+          CHECK_HR(pWriter->WriteSample(writerVideoStreamIndex, outputDataBuffer.pSample), "The stream sink writer was not happy with the sample.");
 
           SAFE_RELEASE(buf);
         }
@@ -238,7 +234,7 @@ int _tmain(int argc, _TCHAR* argv[])
   {
     // See http://stackoverflow.com/questions/24411737/media-foundation-imfsinkwriterfinalize-method-fails-under-windows-7-when-mux 
     // for why the Finalize call can fail with MF_E_ATTRIBUTENOTFOUND.
-    CHECK_HR(pWriter->Finalize(), "Error finalising H.264 sink writer.\n");
+    CHECK_HR(pWriter->Finalize(), "Error finalising H.264 sink writer.");
   }
 
 done:
@@ -248,7 +244,6 @@ done:
 
   SAFE_RELEASE(pVideoSource);
   SAFE_RELEASE(pVideoReader);
-  SAFE_RELEASE(videoSourceOutputType);
   SAFE_RELEASE(pSrcOutMediaType);
   SAFE_RELEASE(spTransformUnk);
   SAFE_RELEASE(pTransform);
