@@ -21,16 +21,14 @@
 * a=fmtp:96 packetization-mode=1
 *
 * 3. Start ffplay BEFORE running this sample:
-* fffplay -i test.sdp -x 640 -y 480 -profile:v baseline -protocol_whitelist "file,rtp,udp"
-*
-* Status: Not Working.
+* ffplay -i test.sdp -x 640 -y 480 -profile:v baseline -protocol_whitelist "file,rtp,udp"
 *
 * Author:
 * Aaron Clauson (aaron@sipsorcery.com)
 *
 * History:
-* 07 Sep 2015	  Aaron Clauson	  Created, Hobart, Australia.
-* 04 Jan 2020		Aaron Clauson		Removed live555 (sledgehammer for a nail for this sample).
+* 07 Sep 2015	Aaron Clauson	Created, Hobart, Australia.
+* 04 Jan 2020	Aaron Clauson	Removed live555 (sledgehammer for a nail for this sample).
 * 10 Jan 2020   Aaron Clauson   Added rudimentary RTP packetisation (suitbale for proof of concept only).
 *
 * License: Public Domain (no warranty, use at own risk)

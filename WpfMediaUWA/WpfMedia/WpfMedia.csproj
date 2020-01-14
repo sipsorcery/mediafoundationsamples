@@ -137,12 +137,6 @@
     <WCFMetadata Include="Service References\" />
   </ItemGroup>
   <ItemGroup>
-    <ProjectReference Include="..\SampleMaker\SampleMaker.vcxproj">
-      <Project>{4c7ec778-0e55-43c9-a381-a7b952a1a802}</Project>
-      <Name>SampleMaker</Name>
-    </ProjectReference>
-  </ItemGroup>
-  <ItemGroup>
     <PackageReference Include="Microsoft.ApplicationInsights">
       <Version>1.0.0</Version>
     </PackageReference>
