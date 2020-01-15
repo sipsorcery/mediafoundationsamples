@@ -1,0 +1,129 @@
+﻿<!DOCTYPE html>
+<head>
+    <meta charset="UTF-8">
+    <script src="https://code.jquery.com/jquery-3.4.1.min.js"
+            integrity="sha256-CSXorXvZcTkaix6Yvo6HppcZGetbYMGWSFlBw8HfCJo="
+            crossorigin="anonymous"></script>
+
+    <script type="text/javascript">
+	
+	var offerSDP = 
+`v=0
+o=- 0 0 IN IP4 127.0.0.1
+s=-
+t=0 0
+m=video 8888 RTP/SAVPF 96
+c=IN IP4 127.0.0.1
+a=candidate:1251003584 1 udp 1038230912 127.0.0.1 8888 typ host generation 0
+a=end-of-candidates
+a=ice-ufrag:EJYWWCUDJQLTXTNQRXEJ
+a=ice-pwd:SKYKPPYLTZOAVCLTGHDUODANRKSPOVQVKXJULOGG
+a=fingerprint:sha-256 C6:ED:8C:9D:06:50:77:23:0A:4A:D8:42:68:29:D0:70:2F:BB:C7:72:EC:98:5C:62:07:1B:0C:5D:CB:CE:BE:CD
+a=setup:actpass
+a=sendrecv
+a=rtcp-mux
+a=mid:video
+a=rtpmap:96 H264/90000
+a=fmtp:96 packetization-mode=1
+`;
+
+/*var offerSDP = 
+`v=0
+o=- 1253447970 2 IN IP4 127.0.0.1
+s=-
+t=0 0
+a=group:BUNDLE audio video
+m=audio 49000 RTP/SAVPF 0
+c=IN IP4 67.222.131.146
+a=candidate:1251003584 1 udp 1038230912 67.222.131.146 49000 typ host generation 0
+a=end-of-candidates 
+a=ice-ufrag:EJYWWCUDJQLTXTNQRXEJ
+a=ice-pwd:SKYKPPYLTZOAVCLTGHDUODANRKSPOVQVKXJULOGG
+a=fingerprint:sha-256 1C:75:D5:71:15:DD:9F:20:EA:12:BD:3D:78:E2:33:D6:24:A3:C6:BE:BE:10:52:6D:44:2C:2A:55:CF:E5:C9:5E
+a=setup:actpass
+a=mid:audio
+a=sendonly
+a=rtcp-mux
+a=mid:audio
+a=rtpmap:0 PCMU/8000
+m=video 0 RTP/SAVPF 100
+c=IN IP4 67.222.131.146
+a=ice-ufrag:EJYWWCUDJQLTXTNQRXEJ
+a=ice-pwd:SKYKPPYLTZOAVCLTGHDUODANRKSPOVQVKXJULOGG
+a=fingerprint:sha-256 1C:75:D5:71:15:DD:9F:20:EA:12:BD:3D:78:E2:33:D6:24:A3:C6:BE:BE:10:52:6D:44:2C:2A:55:CF:E5:C9:5E
+a=bundle-only 
+a=setup:actpass
+a=mid:video
+a=sendonly
+a=rtcp-mux
+a=mid:video
+a=rtpmap:100 VP8/90000
+`;*/
+
+		//$(document).ready(async function() {
+		
+			console.log(offerSDP);
+	
+			/*console.log('Requesting local stream');
+			navigator.mediaDevices
+			  .getUserMedia({
+				audio: false,
+				video: true
+			  })
+			  //.then(gotStream)
+			  .catch(e => {
+				alert(`getUserMedia() error: ${e.name}`);
+			  });*/
+	
+			videoControl = $('#mfWebRTCVideo');
+	
+			const pc_constraints = {
+				'optional': [
+					{ 'DtlsSrtpKeyAgreement': true },
+					{ 'RtpDataChannels': false },
+					{ 'iceTransports': 'udp' },
+					{ 'bundlePolicy': "max-bundle" }
+				]
+			};
+			
+			pc = new RTCPeerConnection();
+			pc.onicecandidate = function (event) {
+				if(event.candidate != null) {
+					console.log(JSON.stringify({'ice': event.candidate}));
+				}
+			};
+
+			pc.ontrack = function (event) {
+				console.log('Remote track added.');
+				console.log(event);
+
+				if (event.streams && event.streams[0]) {
+					videoControl.srcObject = event.streams[0];
+				}
+				else {
+					if (!inboundStream) {
+						inboundStream = new MediaStream();
+						videoControl.srcObject = inboundStream;
+					}
+					inboundStream.addTrack(event.track);
+				}
+			}
+			
+			pc.setRemoteDescription(new RTCSessionDescription({ type: "offer", sdp: offerSDP }));
+
+			// Create the answer SDP.
+			pc.createAnswer().then(function (answer) {
+				console.log("answer SDP: " + answer.sdp)
+				pc.setLocalDescription(answer);
+			});			
+
+			//pc.addIceCandidate(new RTCIceCandidate({ address: "127.0.0.1", port: 8888}));
+		//});
+
+    </script>
+</head>
+<body>
+
+    <video controls autoplay="autoplay" id="mfWebRTCVideo" width="640" height="480"></video>
+
+</body>

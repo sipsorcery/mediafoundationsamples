@@ -6,6 +6,9 @@
 * stream from a webcam using Windows Media Foundation and streams it to a WebRTC
 * client.
 *
+* Dependencies:
+* vcpkg install openssl libsrtp
+*
 * To connect to the program the steps are:
 * 1. Start the program and then open the client.html file in a browser.
 *
@@ -15,7 +18,7 @@
 * Aaron Clauson (aaron@sipsorcery.com)
 *
 * History:
-* 14 Jan 2020	  Aaron Clauson	  Created, Hobart, Australia.
+* 14 Jan 2020	  Aaron Clauson	  Created, Dublin, Ireland.
 *
 * License: Public Domain (no warranty, use at own risk)
 /******************************************************************************/
@@ -38,10 +41,16 @@
 #include <ws2tcpip.h>
 #include <iphlpapi.h>
 
-#include "srtp2/srtp.h"   // vcpkg install libsrtp
+#include <srtp2/srtp.h>
 #include <openssl/bio.h>
-#include "openssl/srtp.h" // vcpkg install openssl
-#include "openssl/err.h"
+#include <openssl/srtp.h>
+#include <openssl/err.h>
+#include <zlib.h> // For CRC32.
+
+#include <exception>
+#include <iostream>
+#include <iterator>
+#include <vector>
 
 #pragma comment(lib, "mf.lib")
 #pragma comment(lib, "mfplat.lib")
@@ -67,6 +76,8 @@
 #define RECEIVE_BUFFER_LENGTH 4096
 #define SRTP_MASTER_KEY_KEY_LEN 16
 #define SRTP_MASTER_KEY_SALT_LEN 14
+#define ICE_PASSWORD "SKYKPPYLTZOAVCLTGHDUODANRKSPOVQVKXJULOGG" // Must match the value in the SDP given to the client.
+#define ICE_PASSWORD_LENGTH 40
 
 // Forward function definitions.
 HRESULT SendH264RtpSample(SOCKET socket, sockaddr_in& dst, IMFSample* pH264Sample, uint32_t ssrc, uint32_t timestamp, uint16_t* seqNum);
@@ -117,6 +128,285 @@ public:
   }
 };
 
+/* STUN message types needed for this example. */
+enum class StunMessageTypes : uint16_t
+{
+  BindingRequest = 0x0001,
+  BindingSuccessResponse = 0x0101,
+  BindingErrorResponse = 0x0111,
+};
+
+/* Minimal STUN header. */
+class StunHeader
+{
+public:
+  static const int HEADER_LENGTH = 20;
+  static const uint32_t MAGIC_COOKIE = 0x2112A442;
+  static inline constexpr const uint8_t MAGIC_COOKIE_BYTES[] = { 0x21, 0x12, 0xA4, 0x42 };
+  static const int TRANSACTION_ID_LENGTH = 12;
+  static const uint8_t STUN_INITIAL_BYTE_MASK = 0xc0;
+
+  uint16_t Type = 0;                              // 12 bits.
+  uint16_t Length = 0;                            // 18 bits.
+  uint8_t TransactionID[TRANSACTION_ID_LENGTH];   // 96 bits.
+
+  void Deserialise(const uint8_t* buffer, int bufferLength)
+  {
+    if ((buffer[0] & STUN_INITIAL_BYTE_MASK) != 0) {
+      throw std::runtime_error("Could not deserialise STUN header, invalid first byte.");
+    }
+    else if (bufferLength < HEADER_LENGTH) {
+      throw std::runtime_error("Could not deserialise STUN header, buffer too small.");
+    }
+    else {
+      Type = ((buffer[0] << 8) & 0xff00) + buffer[1];
+      Length = ((buffer[2] << 8) & 0xff00) + buffer[3];
+      memcpy_s(TransactionID, TRANSACTION_ID_LENGTH, &buffer[8], TRANSACTION_ID_LENGTH);
+    }
+  }
+};
+
+/* STUN attribute types needed for this example. */
+enum class StunAttributeTypes : uint16_t
+{
+  Username = 0x0006,
+  Password = 0x0007,
+  MessageIntegrity = 0x0008,
+  Priority = 0x0024,
+  XORMappedAddress = 0x0020,
+  UseCandidate = 0x0025,
+  FingerPrint = 0x8028,
+};
+
+/* Minimal STUN attribute. */
+class StunAttribute
+{
+public:
+  static const int HEADER_LENGTH = 4;
+  static const int XORMAPPED_ADDRESS_ATTRIBUTE_LENGTH = 8;
+  static const int MESSAGE_INTEGRITY_ATTRIBUTE_HMAC_LENGTH = 20;
+  static const int FINGERPRINT_ATTRIBUTE_CRC32_LENGTH = 4;
+  static const int FINGERPRINT_XOR = 0x5354554e;
+
+  uint16_t Type = 0;            // 16 bits.
+  uint16_t Length = 0;          // 16 bits.
+  std::vector<uint8_t> Value;   // Variable length.
+  uint16_t Padding = 0;         // Attributes start on 32 bit word boundaries. 
+
+  StunAttribute()
+  {}
+
+  StunAttribute(StunAttributeTypes type, std::vector<uint8_t> val)
+  {
+    Type = (uint16_t)type;
+    Length = val.size();
+    Padding = (Length % 4 != 0) ? 4 - (Length % 4) : 0;
+    Value = val;
+  }
+
+  void Deserialise(const uint8_t* buffer, int bufferLength)
+  {
+    if (bufferLength < HEADER_LENGTH) {
+      throw std::runtime_error("Could not deserialise STUN attribute, buffer too small.");
+    }
+    else {
+      Type = ((buffer[0] << 8) & 0xff00) + buffer[1];
+      Length = ((buffer[2] << 8) & 0xff00) + buffer[3];
+      Padding = (Length % 4 != 0) ? 4 - (Length % 4) : 0;
+      Value.resize(Length);
+      memcpy_s(Value.data(), Length, buffer + HEADER_LENGTH, Length);
+    }
+  }
+
+  static StunAttribute GetXorMappedAddrAttribute(uint8_t addrFamily, uint16_t port, uint32_t address)
+  {
+    std::vector<uint8_t> val(XORMAPPED_ADDRESS_ATTRIBUTE_LENGTH);
+
+    val[0] = 0x00;
+    val[1] = addrFamily == AF_INET ? 0x01 : 0x02;
+    val[2] = (port >> 8) & 0xff ^ StunHeader::MAGIC_COOKIE_BYTES[0];
+    val[3] = port & 0xff ^ StunHeader::MAGIC_COOKIE_BYTES[1];
+    val[4] = (address >> 24) & 0xff ^ StunHeader::MAGIC_COOKIE_BYTES[0];
+    val[5] = (address >> 16) & 0xff ^ StunHeader::MAGIC_COOKIE_BYTES[1];
+    val[6] = (address >> 8) & 0xff ^ StunHeader::MAGIC_COOKIE_BYTES[2];
+    val[7] = address & 0xff ^ StunHeader::MAGIC_COOKIE_BYTES[3];
+
+    StunAttribute att(StunAttributeTypes::XORMappedAddress, val);
+    return att;
+  }
+
+  static StunAttribute GetMessageIntegrityAttribute()
+  {
+    std::vector<uint8_t> emptyHmac(MESSAGE_INTEGRITY_ATTRIBUTE_HMAC_LENGTH, 0x00);
+    StunAttribute att(StunAttributeTypes::MessageIntegrity, emptyHmac);
+    return att;
+  }
+
+  static StunAttribute GetFingerprintAttribute()
+  {
+    std::vector<uint8_t> emptyFingerprint(FINGERPRINT_ATTRIBUTE_CRC32_LENGTH, 0x00);
+    StunAttribute att(StunAttributeTypes::FingerPrint, emptyFingerprint);
+    return att;
+  }
+};
+
+class StunMessage
+{
+public:
+  StunHeader Header;
+  std::vector<StunAttribute> Attributes;
+
+  StunMessage()
+  {}
+
+  StunMessage(StunMessageTypes messageType)
+  {
+    Header.Type = (uint16_t)messageType;
+  }
+
+  void AddXorMappedAttribute(uint8_t addrFamily, uint16_t port, uint32_t address)
+  {
+    auto xorAddrAttribute = StunAttribute::GetXorMappedAddrAttribute(addrFamily, port, address);
+    Attributes.push_back(xorAddrAttribute);
+  }
+
+  /**
+  * Add as the second last attribute.
+  */
+  void AddHmacAttribute(const char* icePwd, int icePwdLen)
+  {
+    auto hmacAttribute = StunAttribute::GetMessageIntegrityAttribute();
+    Attributes.push_back(hmacAttribute);
+
+    uint8_t* respBuffer = nullptr;
+
+    // The message integrity attribute doesn't get included in the HMAC.
+    int respBufferLength = Serialise(&respBuffer) - StunAttribute::HEADER_LENGTH - StunAttribute::MESSAGE_INTEGRITY_ATTRIBUTE_HMAC_LENGTH;
+
+    //std::cout << "HMAC input: " << HexStr(respBuffer, respBufferLength) << std::endl;
+
+    UINT hmacLength = StunAttribute::MESSAGE_INTEGRITY_ATTRIBUTE_HMAC_LENGTH;
+    std::vector<uint8_t> hmac(StunAttribute::MESSAGE_INTEGRITY_ATTRIBUTE_HMAC_LENGTH);
+
+    HMAC(EVP_sha1(), icePwd, icePwdLen, respBuffer, respBufferLength, hmac.data(), &hmacLength);
+
+    free(respBuffer);
+
+    Attributes.back().Value = hmac;
+  }
+
+  /**
+  * Add as the last attribute.
+  */
+  void AddFingerprintAttribute()
+  {
+    auto fingerprintAttribute = StunAttribute::GetFingerprintAttribute();
+    Attributes.push_back(fingerprintAttribute);
+
+    uint8_t* respBuffer = nullptr;
+
+    // The fingerprint attribute doesn't get included in the CRC.
+    int respBufferLength = Serialise(&respBuffer) - StunAttribute::HEADER_LENGTH - StunAttribute::FINGERPRINT_ATTRIBUTE_CRC32_LENGTH;
+
+    //std::cout << "Fingerprint input: " << HexStr(respBuffer, respBufferLength) << std::endl;
+
+    // Set the last 4 bytes with the fingerprint CRC.
+    uint32_t crc = crc32(0L, Z_NULL, 0);
+    crc = crc32(crc, (const unsigned char*)respBuffer, respBufferLength);
+    crc = crc ^ StunAttribute::FINGERPRINT_XOR;
+
+    auto crcBuffer = Attributes.back().Value.data();
+
+    crcBuffer[0] = (crc >> 24) & 0xff;
+    crcBuffer[1] = (crc >> 16) & 0xff;
+    crcBuffer[2] = (crc >> 8) & 0xff;
+    crcBuffer[3] = crc & 0xff;
+  }
+
+  int Serialise(uint8_t** buf)
+  {
+    uint16_t messageLength = 0;
+    for (auto att : Attributes) {
+      messageLength += att.Length + att.Padding + StunAttribute::HEADER_LENGTH;
+    }
+
+    *buf = (uint8_t*)calloc(messageLength + StunHeader::HEADER_LENGTH, 1);
+
+    // Serialise header.
+    *(*buf) = (Header.Type >> 8) & 0x03;
+    *(*buf + 1) = Header.Type & 0xff;
+    *(*buf + 2) = (messageLength >> 8) & 0xff;
+    *(*buf + 3) = messageLength & 0xff;
+    // Magic Cookie
+    *(*buf + 4) = StunHeader::MAGIC_COOKIE_BYTES[0];
+    *(*buf + 5) = StunHeader::MAGIC_COOKIE_BYTES[1];
+    *(*buf + 6) = StunHeader::MAGIC_COOKIE_BYTES[2];
+    *(*buf + 7) = StunHeader::MAGIC_COOKIE_BYTES[3];
+    // TransactionID.
+    int bufPosn = 8;
+    while (bufPosn < StunHeader::HEADER_LENGTH) {
+      *(*buf + bufPosn) = Header.TransactionID[bufPosn - 8];
+      bufPosn++;
+    }
+
+    // Serialise attributes.
+    bufPosn = StunHeader::HEADER_LENGTH;
+    for (auto att : Attributes) {
+      *(*buf + bufPosn++) = (att.Type) >> 8 & 0xff;
+      *(*buf + bufPosn++) = att.Type & 0xff;
+      *(*buf + bufPosn++) = (att.Length) >> 8 & 0xff;
+      *(*buf + bufPosn++) = att.Length & 0xff;
+      memcpy_s(*buf + bufPosn, att.Length, att.Value.data(), att.Length);
+      bufPosn += att.Length + att.Padding;
+    }
+
+    return messageLength + StunHeader::HEADER_LENGTH;
+  }
+
+  void Deserialise(const uint8_t* buffer, int bufferLength)
+  {
+    Header.Deserialise(buffer, bufferLength);
+
+    int bufPosn = Header.HEADER_LENGTH;
+
+    while (bufPosn < bufferLength) {
+      StunAttribute att;
+      att.Deserialise(buffer + bufPosn, bufferLength - bufPosn);
+      Attributes.push_back(att);
+
+      bufPosn += att.HEADER_LENGTH + att.Length + att.Padding;
+    }
+  }
+};
+
+int maintest()
+{
+  printf("test\n");
+
+  StunMessage stunBindingResp(StunMessageTypes::BindingSuccessResponse);
+  memset(stunBindingResp.Header.TransactionID, 0x00, StunHeader::TRANSACTION_ID_LENGTH);
+
+  stunBindingResp.AddXorMappedAttribute(AF_INET, 55477, INADDR_LOOPBACK);
+
+  std::cout << "XOR mapped address attribute value: " << HexStr(stunBindingResp.Attributes.back().Value.data(), stunBindingResp.Attributes.back().Value.size()) << std::endl;
+
+  stunBindingResp.AddHmacAttribute(ICE_PASSWORD, ICE_PASSWORD_LENGTH);
+
+  std::cout << "HMAC: " << HexStr(stunBindingResp.Attributes.back().Value.data(), stunBindingResp.Attributes.back().Value.size()) << std::endl;
+
+  stunBindingResp.AddFingerprintAttribute();
+
+  std::cout << "Fingerprint: " << HexStr(stunBindingResp.Attributes.back().Value.data(), stunBindingResp.Attributes.back().Value.size()) << std::endl;
+
+  // XOR Attribute Value: 0x00, 0x01, 0xf9, 0xa7, 0xe1, 0xba, 0xaf, 0x70
+  // HMAC: 3A 75 FD 56 9F AD 3C 7B 1B 8D AE 5C D1 17 00 D3 94 4E 18 F6
+  // Fingerprint: ED 98 87 49
+
+  printf("finished.\n");
+
+  return 0;
+}
+
 int main()
 {
   // Socket variables.
@@ -124,8 +414,8 @@ int main()
   SOCKET rtpSocket = INVALID_SOCKET;
   sockaddr_in service, dest;
   unsigned char recvBuffer[RECEIVE_BUFFER_LENGTH];
-  struct sockaddr_in clientAddr;
-  int dstAddrLen = 0;
+  sockaddr_in clientAddr;
+  int clientAddrLen = sizeof(clientAddr);
 
   // DTLS variables.
   SSL_CTX* ctx = nullptr;		/* main ssl context */
@@ -140,170 +430,213 @@ int main()
   srtp_policy_t* srtpPolicy = nullptr;
   srtp_t* srtpSession = nullptr;
 
-  // Initialise Winsock
-  int iResult = WSAStartup(MAKEWORD(2, 2), &wsaData);
-  if (iResult != 0) {
-    printf("WSAStartup failed: %d\n", iResult);
-    goto done;
+  try {
+
+    // Initialise Winsock
+    int iResult = WSAStartup(MAKEWORD(2, 2), &wsaData);
+    if (iResult != 0) {
+      printf("WSAStartup failed: %d\n", iResult);
+      goto done;
+    }
+
+    // Initialise OpenSSL
+    SSL_library_init();
+    SSL_load_error_strings();
+    ERR_load_BIO_strings();
+    OpenSSL_add_all_algorithms();
+
+    // Dump any openssl errors.
+    ERR_print_errors_fp(stderr);
+
+    // Initialise libsrtp.
+    srtp_init();
+
+    //----------------------
+    // The sockaddr_in structure specifies the address family,
+    // IP address, and port for the socket that is being bound.
+    service.sin_family = AF_INET;
+    service.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+    service.sin_port = htons(RTP_LISTEN_PORT);
+
+    rtpSocket = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+    if (rtpSocket == INVALID_SOCKET) {
+      wprintf(L"socket function failed with error: %u\n", WSAGetLastError());
+      goto done;
+    }
+
+    //----------------------
+    // Bind the socket.
+    iResult = bind(rtpSocket, (SOCKADDR*)&service, sizeof (service));
+    if (iResult == SOCKET_ERROR) {
+      wprintf(L"bind failed with error %u\n", WSAGetLastError());
+      closesocket(rtpSocket);
+      goto done;
+    }
+    else {
+      wprintf(L"bind returned success\n");
+    }
+
+    //----
+    // STUN
+    int recvResult = recvfrom(rtpSocket, (char*)recvBuffer, RECEIVE_BUFFER_LENGTH, 0, (sockaddr*)&clientAddr, &clientAddrLen);
+    if (recvResult == SOCKET_ERROR) {
+      wprintf(L"recvfrom failed with error %d\n", WSAGetLastError());
+      throw std::runtime_error("Initial receive when waiting for STUN packet failed.");
+    }
+    else {
+      printf("Received %d bytes from %s:%d.\n", recvResult, inet_ntoa(clientAddr.sin_addr), ntohs(clientAddr.sin_port));
+      StunMessage stunMsg;
+      stunMsg.Deserialise(recvBuffer, recvResult);
+      printf("STUN message type %d, message length %d.\n", stunMsg.Header.Type, stunMsg.Header.Length);
+     /* for (auto att : stunMsg.Attributes) {
+        printf("STUN message attribute type %d, attribute length %d.\n", att.Type, att.Length);
+      }*/
+
+      // Send binding success response.
+      if (stunMsg.Header.Type == (uint16_t)StunMessageTypes::BindingRequest) {
+
+        StunMessage stunBindingResp(StunMessageTypes::BindingSuccessResponse);
+        std::copy(stunMsg.Header.TransactionID, stunMsg.Header.TransactionID + StunHeader::TRANSACTION_ID_LENGTH, stunBindingResp.Header.TransactionID);
+
+        // Add required attributes.
+        stunBindingResp.AddXorMappedAttribute(clientAddr.sin_family, ntohs(clientAddr.sin_port), ntohl(clientAddr.sin_addr.s_addr));
+        stunBindingResp.AddHmacAttribute(ICE_PASSWORD, ICE_PASSWORD_LENGTH);      
+        stunBindingResp.AddFingerprintAttribute();
+
+        uint8_t* respBuffer = nullptr;
+        int respBufferLength = stunBindingResp.Serialise(&respBuffer);
+
+        printf("Sending STUN response packet, length %d.\n", respBufferLength);
+
+        sendto(rtpSocket, (const char*)respBuffer, respBufferLength, 0, (sockaddr*)&clientAddr, sizeof(clientAddr));
+
+        free(respBuffer);
+      }
+    }
+
+    //-----
+    // DTLS
+
+    ctx = SSL_CTX_new(DTLS_method());	// Copes with DTLS 1.0 and 1.2.
+    if (!ctx) {
+      printf("Error: cannot create SSL_CTX.\n");
+      goto done;
+    }
+
+    int r = SSL_CTX_set_cipher_list(ctx, "ALL:!ADH:!LOW:!EXP:!MD5:@STRENGTH");
+    if (r != 1) {
+      printf("Error: cannot set the cipher list.\n");
+      goto done;
+    }
+
+    /* enable srtp */
+    r = SSL_CTX_set_tlsext_use_srtp(ctx, "SRTP_AES128_CM_SHA1_80");
+    if (r != 0) {
+      printf("Error: cannot setup srtp.\n");
+      goto done;
+    }
+
+    /* certificate file; contains also the public key */
+    r = SSL_CTX_use_certificate_file(ctx, DTLS_CERTIFICATE_FILE, SSL_FILETYPE_PEM);
+    if (r != 1) {
+      printf("Error: cannot load certificate file.\n");
+      goto done;
+    }
+
+    /* load private key */
+    r = SSL_CTX_use_PrivateKey_file(ctx, DTLS_KEY_FILE, SSL_FILETYPE_PEM);
+    if (r != 1) {
+      printf("Error: cannot load private key file.\n");
+      goto done;
+    }
+
+    /* check if the private key is valid */
+    r = SSL_CTX_check_private_key(ctx);
+    if (r != 1) {
+      printf("Error: checking the private key failed.\n");
+      goto done;
+    }
+
+    SSL_CTX_set_cookie_generate_cb(ctx, generate_cookie);
+    SSL_CTX_set_cookie_verify_cb(ctx, verify_cookie);
+    SSL_CTX_set_ecdh_auto(ctx, 1);                        // Needed for FireFox DTLS negotiation.
+    SSL_CTX_set_verify(ctx, SSL_VERIFY_NONE, nullptr);    // The client doesn't have to send it's certificate.
+
+    // DTLS context now created. Accept new clients and do the handshake.
+    bio = BIO_new_dgram(rtpSocket, BIO_NOCLOSE);
+    ssl = SSL_new(ctx);
+    SSL_set_bio(ssl, bio, bio);
+    SSL_set_info_callback(ssl, krx_ssl_info_callback);    // info callback.
+    SSL_set_accept_state(ssl);
+
+    DTLSv1_listen(ssl, &clientAddr);
+
+    printf("New DTLS client connection.\n");
+
+    // Attempt to complete the DTLS handshake
+    // If successful, the DTLS link state is initialized internally
+    if (SSL_accept(ssl) <= 0) {
+      printf("Failed to complete SSL handshake.\n");
+      goto done;
+    }
+    else {
+      printf("DTLS Handshake completed.\n");
+    }
+
+    /* Now libsrtp takes over.*/
+    const char* label = "EXTRACTOR-dtls_srtp";
+
+    r = SSL_export_keying_material(ssl,
+      dtls_buffer,
+      sizeof(dtls_buffer),
+      label,
+      strlen(label),
+      NULL,
+      0,
+      0);
+    if (r != 1) {
+      printf("Error: exporting DTLS key material.\n");
+      goto done;
+    }
+
+    memcpy(&client_write_key[0], &dtls_buffer[keyMaterialOffset], SRTP_MASTER_KEY_KEY_LEN);
+    keyMaterialOffset += SRTP_MASTER_KEY_KEY_LEN;
+    memcpy(&server_write_key[0], &dtls_buffer[keyMaterialOffset], SRTP_MASTER_KEY_KEY_LEN);
+    keyMaterialOffset += SRTP_MASTER_KEY_KEY_LEN;
+    memcpy(&client_write_key[SRTP_MASTER_KEY_KEY_LEN], &dtls_buffer[keyMaterialOffset], SRTP_MASTER_KEY_SALT_LEN);
+    keyMaterialOffset += SRTP_MASTER_KEY_SALT_LEN;
+    memcpy(&server_write_key[SRTP_MASTER_KEY_KEY_LEN], &dtls_buffer[keyMaterialOffset], SRTP_MASTER_KEY_SALT_LEN);
+
+    srtpPolicy = new srtp_policy_t();
+    srtp_crypto_policy_set_rtp_default(&srtpPolicy->rtp);
+    srtp_crypto_policy_set_rtcp_default(&srtpPolicy->rtcp);
+
+    /* Init transmit direction */
+    srtpPolicy->key = server_write_key;
+
+    srtpPolicy->ssrc.value = 0;
+    srtpPolicy->window_size = 128;
+    srtpPolicy->allow_repeat_tx = 0;
+    srtpPolicy->ssrc.type = ssrc_any_outbound;
+    srtpPolicy->next = NULL;
+    srtpSession = new srtp_t();
+
+    auto err = srtp_create(srtpSession, srtpPolicy);
+    if (err != srtp_err_status_ok) {
+      printf("Unable to create SRTP session.\n");
+      goto done;
+    }
+    else {
+      printf("SRTP session created.\n");
+    }
+
+    delete(srtpPolicy);
+
+  }
+  catch (std::exception & excp) {
+    std::cout << "Exception: " << excp.what() << std::endl;
   }
 
-  // Initialise OpenSSL
-  SSL_library_init();
-  SSL_load_error_strings();
-  ERR_load_BIO_strings();
-  OpenSSL_add_all_algorithms();
-
-  // Dump any openssl errors.
-  ERR_print_errors_fp(stderr);
-
-  // Initialise libsrtp.
-  srtp_init();
-
-  //----------------------
-  // The sockaddr_in structure specifies the address family,
-  // IP address, and port for the socket that is being bound.
-  service.sin_family = AF_INET;
-  service.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
-  service.sin_port = htons(RTP_LISTEN_PORT);
-
-  rtpSocket = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
-  if (rtpSocket == INVALID_SOCKET) {
-    wprintf(L"socket function failed with error: %u\n", WSAGetLastError());
-    goto done;
-  }
-
-  //----------------------
-  // Bind the socket.
-  iResult = bind(rtpSocket, (SOCKADDR*)&service, sizeof (service));
-  if (iResult == SOCKET_ERROR) {
-    wprintf(L"bind failed with error %u\n", WSAGetLastError());
-    closesocket(rtpSocket);
-    goto done;
-  }
-  else {
-    wprintf(L"bind returned success\n");
-  }
-
-  //-----
-  // DTLS
-
-  ctx = SSL_CTX_new(DTLS_method());	// Copes with DTLS 1.0 and 1.2.
-  if (!ctx) {
-    printf("Error: cannot create SSL_CTX.\n");
-    goto done;
-  }
-
-  int r = SSL_CTX_set_cipher_list(ctx, "ALL:!ADH:!LOW:!EXP:!MD5:@STRENGTH");
-  if (r != 1) {
-    printf("Error: cannot set the cipher list.\n");
-    goto done;
-  }
-
-  // Needed for FireFox DTLS negotiation.
-  SSL_CTX_set_ecdh_auto(ctx, 1);
-
-  /* enable srtp */
-  r = SSL_CTX_set_tlsext_use_srtp(ctx, "SRTP_AES128_CM_SHA1_80");
-  if (r != 0) {
-    printf("Error: cannot setup srtp.\n");
-    goto done;
-  }
-
-  /* certificate file; contains also the public key */
-  r = SSL_CTX_use_certificate_file(ctx, DTLS_CERTIFICATE_FILE, SSL_FILETYPE_PEM);
-  if (r != 1) {
-    printf("Error: cannot load certificate file.\n");
-    goto done;
-  }
-
-  /* load private key */
-  r = SSL_CTX_use_PrivateKey_file(ctx, DTLS_KEY_FILE, SSL_FILETYPE_PEM);
-  if (r != 1) {
-    printf("Error: cannot load private key file.\n");
-    goto done;
-  }
-
-  /* check if the private key is valid */
-  r = SSL_CTX_check_private_key(ctx);
-  if (r != 1) {
-    printf("Error: checking the private key failed.\n");
-    goto done;
-  }
-
-  SSL_CTX_set_cookie_generate_cb(ctx, generate_cookie);
-  SSL_CTX_set_cookie_verify_cb(ctx, verify_cookie);
-
-  // DTLS context now created. Accept new clients and do the handshake.
-  bio = BIO_new_dgram(rtpSocket, BIO_NOCLOSE);
-  ssl = SSL_new(ctx);
-  SSL_set_bio(ssl, bio, bio);
-
-  DTLSv1_listen(ssl, &clientAddr);
-
-  printf("New DTLS client connection.\n");
-
-  /* Finish handshake */
-  //SSL_accept(ssl);
-
-  // Attempt to complete the DTLS handshake
-  // If successful, the DTLS link state is initialized internally
-  if (SSL_accept(ssl) <= 0) {
-    printf("Failed to complete SSL handshake.\n");
-    goto done;
-  }
-  else {
-    printf("DTLS Handshake completed.\n");
-  }
-
-  /* Now libsrtp takes over.*/
-  const char* label = "EXTRACTOR-dtls_srtp";
-
-  r = SSL_export_keying_material(ssl,
-    dtls_buffer,
-    sizeof(dtls_buffer),
-    label,
-    strlen(label),
-    NULL,
-    0,
-    0);
-  if (r != 1) {
-    printf("Error: exporting DTLS key material.\n");
-    goto done;
-  }
-
-  memcpy(&client_write_key[0], &dtls_buffer[keyMaterialOffset], SRTP_MASTER_KEY_KEY_LEN);
-  keyMaterialOffset += SRTP_MASTER_KEY_KEY_LEN;
-  memcpy(&server_write_key[0], &dtls_buffer[keyMaterialOffset], SRTP_MASTER_KEY_KEY_LEN);
-  keyMaterialOffset += SRTP_MASTER_KEY_KEY_LEN;
-  memcpy(&client_write_key[SRTP_MASTER_KEY_KEY_LEN], &dtls_buffer[keyMaterialOffset], SRTP_MASTER_KEY_SALT_LEN);
-  keyMaterialOffset += SRTP_MASTER_KEY_SALT_LEN;
-  memcpy(&server_write_key[SRTP_MASTER_KEY_KEY_LEN], &dtls_buffer[keyMaterialOffset], SRTP_MASTER_KEY_SALT_LEN);
-
-  srtpPolicy = new srtp_policy_t();
-  srtp_crypto_policy_set_rtp_default(&srtpPolicy->rtp);
-  srtp_crypto_policy_set_rtcp_default(&srtpPolicy->rtcp);
-
-  /* Init transmit direction */
-  srtpPolicy->key = server_write_key;
-
-  srtpPolicy->ssrc.value = 0;
-  srtpPolicy->window_size = 128;
-  srtpPolicy->allow_repeat_tx = 0;
-  srtpPolicy->ssrc.type = ssrc_any_outbound;
-  srtpPolicy->next = NULL;
-  srtpSession = new srtp_t();
-
-  auto err = srtp_create(srtpSession, srtpPolicy);
-  if (err != srtp_err_status_ok) {
-    printf("Unable to create SRTP session.\n");
-    goto done;
-  }
-  else {
-    printf("SRTP session created.\n");
-  }
-
-  delete(srtpPolicy);
- 
 done:
 
   ERR_print_errors_fp(stderr);
@@ -329,6 +662,7 @@ done:
   CRYPTO_cleanup_all_ex_data();
 
   // Winsock cleanup
+  closesocket(rtpSocket);
   WSACleanup();
 }
 
