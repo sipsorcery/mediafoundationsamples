@@ -1,0 +1,31 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 16
+VisualStudioVersion = 16.0.29613.14
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "MFWebCamWebRTC", "MFWebCamWebRTCH264.vcxproj", "{923E40AD-BBE5-4697-857B-90F3AB8DA965}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|x64 = Debug|x64
+		Debug|x86 = Debug|x86
+		Release|x64 = Release|x64
+		Release|x86 = Release|x86
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{923E40AD-BBE5-4697-857B-90F3AB8DA965}.Debug|x64.ActiveCfg = Debug|x64
+		{923E40AD-BBE5-4697-857B-90F3AB8DA965}.Debug|x64.Build.0 = Debug|x64
+		{923E40AD-BBE5-4697-857B-90F3AB8DA965}.Debug|x86.ActiveCfg = Debug|Win32
+		{923E40AD-BBE5-4697-857B-90F3AB8DA965}.Debug|x86.Build.0 = Debug|Win32
+		{923E40AD-BBE5-4697-857B-90F3AB8DA965}.Release|x64.ActiveCfg = Release|x64
+		{923E40AD-BBE5-4697-857B-90F3AB8DA965}.Release|x64.Build.0 = Release|x64
+		{923E40AD-BBE5-4697-857B-90F3AB8DA965}.Release|x86.ActiveCfg = Release|Win32
+		{923E40AD-BBE5-4697-857B-90F3AB8DA965}.Release|x86.Build.0 = Release|Win32
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {1D8A20DB-700C-43BE-93BD-6E5524C97A09}
+	EndGlobalSection
+EndGlobal

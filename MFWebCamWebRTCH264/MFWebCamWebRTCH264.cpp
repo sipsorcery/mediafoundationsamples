@@ -1,5 +1,5 @@
 /******************************************************************************
-* Filename: MFWebCamWebRTC.cpp
+* Filename: MFWebCamWebRTCH264.cpp
 *
 * Description:
 * This file contains a C++ console application that captures the realtime video
@@ -12,7 +12,7 @@
 * To connect to the program the steps are:
 * 1. Start the program and then open the client.html file in a browser.
 *
-* Status: Work in Progress.
+* Status: Chrome not able to decode H264 bitstream.
 *
 * Author:
 * Aaron Clauson (aaron@sipsorcery.com)

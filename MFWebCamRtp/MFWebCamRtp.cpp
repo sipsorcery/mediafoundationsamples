@@ -29,7 +29,7 @@
 * History:
 * 07 Sep 2015	Aaron Clauson	Created, Hobart, Australia.
 * 04 Jan 2020	Aaron Clauson	Removed live555 (sledgehammer for a nail for this sample).
-* 10 Jan 2020   Aaron Clauson   Added rudimentary RTP packetisation (suitbale for proof of concept only).
+* 10 Jan 2020   Aaron Clauson   Added rudimentary RTP packetisation (suitable for proof of concept only).
 *
 * License: Public Domain (no warranty, use at own risk)
 /******************************************************************************/
@@ -208,7 +208,8 @@ int main()
   CHECK_HR(pMFTOutputMediaType->SetGUID(MF_MT_SUBTYPE, MFVideoFormat_H264), "Error setting video sub type.");
   CHECK_HR(pMFTOutputMediaType->SetUINT32(MF_MT_AVG_BITRATE, 240000), "Error setting average bit rate.");
   CHECK_HR(pMFTOutputMediaType->SetUINT32(MF_MT_INTERLACE_MODE, 2), "Error setting interlace mode.");
-  CHECK_HR(MFSetAttributeRatio(pMFTOutputMediaType, MF_MT_MPEG2_PROFILE, eAVEncH264VProfile_Base, 1), "Failed to set profile on H264 MFT out type.");
+  //CHECK_HR(MFSetAttributeRatio(pMFTOutputMediaType, MF_MT_MPEG2_PROFILE, eAVEncH264VProfile_Base, 1), "Failed to set profile on H264 MFT out type.");
+  CHECK_HR(MFSetAttributeRatio(pMFTOutputMediaType, MF_MT_MPEG2_PROFILE, eAVEncH264VProfile_ConstrainedBase, 1), "Failed to set profile on H264 MFT out type.");
   //CHECK_HR(pMFTOutputMediaType->SetDouble(MF_MT_MPEG2_LEVEL, 3.1), "Failed to set level on H264 MFT out type.\n");
   //CHECK_HR(pMFTOutputMediaType->SetUINT32(MF_MT_MAX_KEYFRAME_SPACING, 10), "Failed to set key frame interval on H264 MFT out type.\n");
   //CHECK_HR(pMFTOutputMediaType->SetUINT32(CODECAPI_AVEncCommonQuality, 100), "Failed to set H264 codec qulaity.\n");
