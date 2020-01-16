@@ -967,9 +967,6 @@ HRESULT SendH264RtpSample(SOCKET socket, sockaddr_in& dst, srtp_t* srtpSession, 
   hr = buf->Lock(&frameData, &buffMaxLen, &buffCurrLen);
   CHECK_HR(hr, "Failed to lock H264 sample buffer.");
 
-  hr = buf->Unlock();
-  CHECK_HR(hr, "Failed to unlock video sample buffer.");
-
   uint16_t pktSeqNum = *seqNum;
 
   for (UINT offset = 0; offset < frameLength;)
@@ -1025,6 +1022,9 @@ HRESULT SendH264RtpSample(SOCKET socket, sockaddr_in& dst, srtp_t* srtpSession, 
     free(hdrSerialised);
     free(rtpPacket);
   }
+  
+  hr = buf->Unlock();
+  CHECK_HR(hr, "Failed to unlock video sample buffer.");
 
 done:
 

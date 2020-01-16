@@ -12,7 +12,7 @@
 o=- 0 0 IN IP4 127.0.0.1
 s=-
 t=0 0
-m=video 8888 RTP/SAVPF 96
+m=video 8888 RTP/SAVPF 100
 c=IN IP4 127.0.0.1
 a=candidate:1251003584 1 udp 1038230912 127.0.0.1 8888 typ host generation 0
 a=end-of-candidates
@@ -23,8 +23,7 @@ a=setup:actpass
 a=sendonly
 a=rtcp-mux
 a=mid:video
-a=rtpmap:96 H264/90000
-a=fmtp:96 level-asymmetry-allowed=1;packetization-mode=1;profile-level-id=42e01f
+a=rtpmap:100 VP8/90000
 `;
 
 /*var offerSDP = 

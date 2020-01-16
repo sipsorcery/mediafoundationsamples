@@ -68,7 +68,7 @@
 #define RTP_MAX_PAYLOAD 1400      // Maximum size of an RTP packet, needs to be under the Ethernet MTU.
 #define RTP_HEADER_LENGTH 12
 #define RTP_VERSION 2
-#define RTP_PAYLOAD_ID 96         // Needs to match the attribute set in the SDP (a=rtpmap:96 H264/90000).
+#define RTP_PAYLOAD_ID 100         // Needs to match the attribute set in the SDP (a=rtpmap:100 VP8/90000).
 #define RTP_SSRC 337799
 #define H264_RTP_HEADER_LENGTH 2
 #define RTP_LISTEN_PORT 8888      // The port this sample will listen on for an RTP connection from a WebRTC client.
@@ -83,7 +83,7 @@
 #define SRTP_AUTH_KEY_LENGTH 10
 
 // Forward function definitions.
-HRESULT SendH264RtpSample(SOCKET socket, sockaddr_in& dst, srtp_t* srtpSession, IMFSample* pH264Sample, uint32_t ssrc, uint32_t timestamp, uint16_t* seqNum);
+HRESULT SendRtpSample(SOCKET socket, sockaddr_in& dst, srtp_t* srtpSession, IMFSample* pSample, uint32_t ssrc, uint32_t timestamp, uint16_t* seqNum);
 void krx_ssl_info_callback(const SSL* ssl, int where, int ret);
 int verify_cookie(SSL* ssl, unsigned char* cookie, unsigned int cookie_len);
 int generate_cookie(SSL* ssl, unsigned char* cookie, unsigned int* cookie_len);
@@ -493,11 +493,11 @@ int main()
       StunMessage stunMsg;
       stunMsg.Deserialise(recvBuffer, recvResult);
       printf("STUN message type %d, message length %d.\n", stunMsg.Header.Type, stunMsg.Header.Length);
-     /* for (auto att : stunMsg.Attributes) {
-        printf("STUN message attribute type %d, attribute length %d.\n", att.Type, att.Length);
-      }*/
+      /* for (auto att : stunMsg.Attributes) {
+         printf("STUN message attribute type %d, attribute length %d.\n", att.Type, att.Length);
+       }*/
 
-      // Send binding success response.
+       // Send binding success response.
       if (stunMsg.Header.Type == (uint16_t)StunMessageTypes::BindingRequest) {
 
         StunMessage stunBindingResp(StunMessageTypes::BindingSuccessResponse);
@@ -505,7 +505,7 @@ int main()
 
         // Add required attributes.
         stunBindingResp.AddXorMappedAttribute(clientAddr.sin_family, ntohs(clientAddr.sin_port), ntohl(clientAddr.sin_addr.s_addr));
-        stunBindingResp.AddHmacAttribute(ICE_PASSWORD, ICE_PASSWORD_LENGTH);      
+        stunBindingResp.AddHmacAttribute(ICE_PASSWORD, ICE_PASSWORD_LENGTH);
         stunBindingResp.AddFingerprintAttribute();
 
         uint8_t* respBuffer = nullptr;
@@ -612,8 +612,8 @@ int main()
     keyMaterialOffset += SRTP_MASTER_KEY_SALT_LEN;
     memcpy(&server_write_key[SRTP_MASTER_KEY_KEY_LEN], &dtls_buffer[keyMaterialOffset], SRTP_MASTER_KEY_SALT_LEN);
 
-    srtp_policy_t * srtpPolicy = new srtp_policy_t();
-    srtp_t * srtpSession = new srtp_t();
+    srtp_policy_t* srtpPolicy = new srtp_policy_t();
+    srtp_t* srtpSession = new srtp_t();
 
     srtp_crypto_policy_set_rtp_default(&srtpPolicy->rtp);
     srtp_crypto_policy_set_rtcp_default(&srtpPolicy->rtcp);
@@ -735,7 +735,7 @@ void listenThread(SOCKET rtpSocket)
           free(respBuffer);
         }
       }
-      else if(recvBuffer[0] >=128 && recvBuffer[0]<=191){
+      else if (recvBuffer[0] >= 128 && recvBuffer[0] <= 191) {
         // RTP/RTCP packet.
         printf("RTP or RTCP packet received.\n");
       }
@@ -756,14 +756,7 @@ int StreamWebcam(SOCKET rtpSocket, sockaddr_in& dest, srtp_t* srtpSession)
   IMFSourceReader* pVideoReader = NULL;
   WCHAR* webcamFriendlyName;
   IMFMediaType* pSrcOutMediaType = NULL;
-  IUnknown* spEncoderTransfromUnk = NULL;
-  IMFTransform* pEncoderTransfrom = NULL; // This is H264 Encoder MFT.
-  IMFMediaType* pMFTInputMediaType = NULL, * pMFTOutputMediaType = NULL;
   UINT friendlyNameLength = 0;
-  IUnknown* spDecTransformUnk = NULL;
-  IMFTransform* pDecoderTransform = NULL; // This is H264 Decoder MFT.
-  IMFMediaType* pDecInputMediaType = NULL, * pDecOutputMediaType = NULL;
-  DWORD mftStatus = 0;
 
   uint16_t rtpSsrc = RTP_SSRC; // Supposed to be pseudo-random.
   uint16_t rtpSeqNum = 0;
@@ -783,7 +776,6 @@ int StreamWebcam(SOCKET rtpSocket, sockaddr_in& dest, srtp_t* srtpSession)
   MFCreateMediaType(&pSrcOutMediaType);
   CHECK_HR(pSrcOutMediaType->SetGUID(MF_MT_MAJOR_TYPE, MFMediaType_Video), "Failed to set major video type.");
   CHECK_HR(pSrcOutMediaType->SetGUID(MF_MT_SUBTYPE, WMMEDIASUBTYPE_I420), "Failed to set video sub type to I420.");
-  //CHECK_HR(pSrcOutMediaType->SetGUID(MF_MT_SUBTYPE, MFVideoFormat_RGB24), "Failed to set video sub type.");
   CHECK_HR(MFSetAttributeRatio(pSrcOutMediaType, MF_MT_FRAME_RATE, OUTPUT_FRAME_RATE, 1), "Failed to set frame rate on source reader out type.");
   CHECK_HR(MFSetAttributeSize(pSrcOutMediaType, MF_MT_FRAME_SIZE, OUTPUT_FRAME_WIDTH, OUTPUT_FRAME_HEIGHT), "Failed to set frame size.");
 
@@ -792,57 +784,14 @@ int StreamWebcam(SOCKET rtpSocket, sockaddr_in& dest, srtp_t* srtpSession)
 
   printf("%s\n", GetMediaTypeDescription(pSrcOutMediaType).c_str());
 
-  // Create H.264 encoder.
-  CHECK_HR(CoCreateInstance(CLSID_CMSH264EncoderMFT, NULL, CLSCTX_INPROC_SERVER,
-    IID_IUnknown, (void**)&spEncoderTransfromUnk),
-    "Failed to create H264 encoder MFT.");
-
-  CHECK_HR(spEncoderTransfromUnk->QueryInterface(IID_PPV_ARGS(&pEncoderTransfrom)),
-    "Failed to get IMFTransform interface from H264 encoder MFT object.");
-
-  MFCreateMediaType(&pMFTInputMediaType);
-  CHECK_HR(pSrcOutMediaType->CopyAllItems(pMFTInputMediaType), "Error copying media type attributes to decoder output media type.");
-  CHECK_HR(pMFTInputMediaType->SetGUID(MF_MT_SUBTYPE, MFVideoFormat_IYUV), "Error setting video subtype.");
-
-  MFCreateMediaType(&pMFTOutputMediaType);
-  CHECK_HR(pMFTInputMediaType->CopyAllItems(pMFTOutputMediaType), "Error copying media type attributes tfrom mft input type to mft output type.");
-  CHECK_HR(pMFTOutputMediaType->SetGUID(MF_MT_SUBTYPE, MFVideoFormat_H264), "Error setting video sub type.");
-  CHECK_HR(pMFTOutputMediaType->SetUINT32(MF_MT_AVG_BITRATE, 240000), "Error setting average bit rate.");
-  CHECK_HR(pMFTOutputMediaType->SetUINT32(MF_MT_INTERLACE_MODE, 2), "Error setting interlace mode.");
-  CHECK_HR(MFSetAttributeRatio(pMFTOutputMediaType, MF_MT_MPEG2_PROFILE, eAVEncH264VProfile_ConstrainedBase, 1), "Failed to set profile on H264 MFT out type.");
-  //CHECK_HR(pMFTOutputMediaType->SetDouble(MF_MT_MPEG2_LEVEL, 3.1), "Failed to set level on H264 MFT out type.\n");
-  //CHECK_HR(pMFTOutputMediaType->SetUINT32(MF_MT_MAX_KEYFRAME_SPACING, 10), "Failed to set key frame interval on H264 MFT out type.\n");
-  //CHECK_HR(pMFTOutputMediaType->SetUINT32(CODECAPI_AVEncCommonQuality, 100), "Failed to set H264 codec quality.\n");
-
-  std::cout << "H264 encoder output type: " << GetMediaTypeDescription(pMFTOutputMediaType) << std::endl;
-
-  CHECK_HR(pEncoderTransfrom->SetOutputType(0, pMFTOutputMediaType, 0),
-    "Failed to set output media type on H.264 encoder MFT.");
-
-  std::cout << "H264 encoder input type: " << GetMediaTypeDescription(pMFTInputMediaType) << std::endl;
-
-  CHECK_HR(pEncoderTransfrom->SetInputType(0, pMFTInputMediaType, 0),
-    "Failed to set input media type on H.264 encoder MFT.");
-
-  CHECK_HR(pEncoderTransfrom->GetInputStatus(0, &mftStatus), "Failed to get input status from H.264 MFT.");
-  if (MFT_INPUT_STATUS_ACCEPT_DATA != mftStatus) {
-    printf("E: ApplyTransform() pEncoderTransfrom->GetInputStatus() not accept data.\n");
-    goto done;
-  }
-
-  //CHECK_HR(pEncoderTransfrom->ProcessMessage(MFT_MESSAGE_COMMAND_FLUSH, NULL), "Failed to process FLUSH command on H.264 MFT.");
-  CHECK_HR(pEncoderTransfrom->ProcessMessage(MFT_MESSAGE_NOTIFY_BEGIN_STREAMING, NULL), "Failed to process BEGIN_STREAMING command on H.264 MFT.");
-  CHECK_HR(pEncoderTransfrom->ProcessMessage(MFT_MESSAGE_NOTIFY_START_OF_STREAM, NULL), "Failed to process START_OF_STREAM command on H.264 MFT.");
-
   // Ready to go.
 
   printf("Reading video samples from webcam.\n");
 
-  IMFSample* pVideoSample = NULL, * pH264EncodeOutSample = NULL;
+  IMFSample* pVideoSample = NULL;
   DWORD streamIndex = 0, flags = 0, sampleFlags = 0;
   LONGLONG llVideoTimeStamp, llSampleDuration;
   int sampleCount = 0;
-  BOOL h264EncodeTransformFlushed = FALSE;
 
   while (true)
   {
@@ -888,45 +837,18 @@ int StreamWebcam(SOCKET rtpSocket, sockaddr_in& dest, srtp_t* srtpSession)
 
       //printf("Sample count %d, Sample flags %d, sample duration %I64d, sample time %I64d\n", sampleCount, sampleFlags, llSampleDuration, llVideoTimeStamp);
 
-      // Apply the H264 encoder transform
-      CHECK_HR(pEncoderTransfrom->ProcessInput(0, pVideoSample, 0),
-        "The H264 encoder ProcessInput call failed.");
 
-      // ***** H264 ENcoder transform processing loop. *****
-
-      HRESULT getEncoderResult = S_OK;
-      while (getEncoderResult == S_OK) {
-
-        getEncoderResult = GetTransformOutput(pEncoderTransfrom, &pH264EncodeOutSample, &h264EncodeTransformFlushed);
-
-        if (getEncoderResult != S_OK && getEncoderResult != MF_E_TRANSFORM_NEED_MORE_INPUT) {
-          printf("Error getting H264 encoder transform output, error code %.2X.\n", getEncoderResult);
-          goto done;
-        }
-
-        if (h264EncodeTransformFlushed == TRUE) {
-          // H264 encoder format changed. Clear the capture file and start again.
-          printf("H264 encoder transform flushed stream.\n");
-        }
-        else if (pH264EncodeOutSample != NULL) {
-
-          //printf("H264 sample ready for transmission.\n");
-
-          SendH264RtpSample(rtpSocket, dest, srtpSession, pH264EncodeOutSample, rtpSsrc, (uint32_t)(llVideoTimeStamp / 10000), &rtpSeqNum);
-        }
-
-        SAFE_RELEASE(pH264EncodeOutSample);
-      }
-      // *****
-
-      sampleCount++;
-
-      // Note: Apart from memory leak issues if the media samples are not released the videoReader->ReadSample
-      // blocks when it is unable to allocate a new sample.
-      SAFE_RELEASE(pVideoSample);
-      SAFE_RELEASE(pH264EncodeOutSample);
+      SendRtpSample(rtpSocket, dest, srtpSession, pVideoSample, rtpSsrc, (uint32_t)(llVideoTimeStamp / 10000), &rtpSeqNum);
     }
+    // *****
+
+    sampleCount++;
+
+    // Note: Apart from memory leak issues if the media samples are not released the videoReader->ReadSample
+    // blocks when it is unable to allocate a new sample.
+    SAFE_RELEASE(pVideoSample);
   }
+
 
 done:
 
@@ -936,17 +858,13 @@ done:
   SAFE_RELEASE(pVideoSource);
   SAFE_RELEASE(pVideoReader);
   SAFE_RELEASE(pSrcOutMediaType);
-  SAFE_RELEASE(spEncoderTransfromUnk);
-  SAFE_RELEASE(pEncoderTransfrom);
-  SAFE_RELEASE(pMFTInputMediaType);
-  SAFE_RELEASE(pMFTOutputMediaType);
 
   WSACleanup();
 
   return 0;
 }
 
-HRESULT SendH264RtpSample(SOCKET socket, sockaddr_in& dst, srtp_t* srtpSession, IMFSample* pH264Sample, uint32_t ssrc, uint32_t timestamp, uint16_t* seqNum)
+HRESULT SendRtpSample(SOCKET socket, sockaddr_in& dst, srtp_t* srtpSession, IMFSample* pSample, uint32_t ssrc, uint32_t timestamp, uint16_t* seqNum)
 {
   static uint16_t h264HeaderStart = 0x1c89;   // Start RTP packet in frame 0x1c 0x89
   static uint16_t h264HeaderMiddle = 0x1c09;  // Middle RTP packet in frame 0x1c 0x09
@@ -958,17 +876,14 @@ HRESULT SendH264RtpSample(SOCKET socket, sockaddr_in& dst, srtp_t* srtpSession, 
   DWORD frameLength = 0, buffCurrLen = 0, buffMaxLen = 0;
   byte* frameData = NULL;
 
-  hr = pH264Sample->ConvertToContiguousBuffer(&buf);
+  hr = pSample->ConvertToContiguousBuffer(&buf);
   CHECK_HR(hr, "ConvertToContiguousBuffer failed.");
 
   hr = buf->GetCurrentLength(&frameLength);
   CHECK_HR(hr, "Get buffer length failed.");
 
   hr = buf->Lock(&frameData, &buffMaxLen, &buffCurrLen);
-  CHECK_HR(hr, "Failed to lock H264 sample buffer.");
-
-  hr = buf->Unlock();
-  CHECK_HR(hr, "Failed to unlock video sample buffer.");
+  CHECK_HR(hr, "Failed to lock video sample buffer.");
 
   uint16_t pktSeqNum = *seqNum;
 
@@ -1025,6 +940,9 @@ HRESULT SendH264RtpSample(SOCKET socket, sockaddr_in& dst, srtp_t* srtpSession, 
     free(hdrSerialised);
     free(rtpPacket);
   }
+
+  hr = buf->Unlock();
+  CHECK_HR(hr, "Failed to unlock video sample buffer.");
 
 done:
 
