@@ -7,12 +7,18 @@
 * client.
 *
 * Dependencies:
-* vcpkg install openssl libsrtp zlib
+* vcpkg install openssl libsrtp libvpx zlib
 *
-* To connect to the program the steps are:
-* 1. Start the program and then open the client.html file in a browser.
+* To connect to the program the steps are below. The example uses the loopback address
+* for the connection so the program and the browser need to be running on the same machine.
+* The program only supports a single client and needs to be restarted at the end
+* of each connection.
 *
-* Status: Work in Progress.
+* 1. Build and run this program.
+* 2. Open the mfwebrtc.html file in Chrome (doesn't work with other browsers).
+* 3. Press the Start button on the web page and the webcam feed should appear.
+*
+* Status: Works with Chrome (as of 17 Jan 2020).
 *
 * Author:
 * Aaron Clauson (aaron@sipsorcery.com)
@@ -45,7 +51,9 @@
 #include <openssl/bio.h>
 #include <openssl/srtp.h>
 #include <openssl/err.h>
-#include <zlib.h> // For CRC32.
+#include <vpx/vpx_encoder.h>
+#include <vpx/vp8cx.h>
+#include <zlib.h>
 
 #include <exception>
 #include <iostream>
@@ -70,7 +78,7 @@
 #define RTP_VERSION 2
 #define RTP_PAYLOAD_ID 100         // Needs to match the attribute set in the SDP (a=rtpmap:100 VP8/90000).
 #define RTP_SSRC 337799
-#define H264_RTP_HEADER_LENGTH 2
+#define VP8_RTP_HEADER_LENGTH 1
 #define RTP_LISTEN_PORT 8888      // The port this sample will listen on for an RTP connection from a WebRTC client.
 #define DTLS_CERTIFICATE_FILE "localhost.pem"
 #define DTLS_KEY_FILE "localhost_key.pem"
@@ -78,17 +86,22 @@
 #define RECEIVE_BUFFER_LENGTH 4096
 #define SRTP_MASTER_KEY_KEY_LEN 16
 #define SRTP_MASTER_KEY_SALT_LEN 14
+#define ICE_USERNAME "EJYWWCUDJQLTXTNQRXEJ"
+#define ICE_USERNAME_LENGTH 20
 #define ICE_PASSWORD "SKYKPPYLTZOAVCLTGHDUODANRKSPOVQVKXJULOGG" // Must match the value in the SDP given to the client.
 #define ICE_PASSWORD_LENGTH 40
 #define SRTP_AUTH_KEY_LENGTH 10
+#define VP8_TIMESTAMP_SPACING 3000
 
 // Forward function definitions.
-HRESULT SendRtpSample(SOCKET socket, sockaddr_in& dst, srtp_t* srtpSession, IMFSample* pSample, uint32_t ssrc, uint32_t timestamp, uint16_t* seqNum);
+class StunMessage;
+HRESULT SendRtpSample(SOCKET socket, sockaddr_in& dst, srtp_t* srtpSession, byte* frameData, size_t frameLength, uint32_t ssrc, uint32_t timestamp, uint16_t* seqNum);
 void krx_ssl_info_callback(const SSL* ssl, int where, int ret);
 int verify_cookie(SSL* ssl, unsigned char* cookie, unsigned int cookie_len);
 int generate_cookie(SSL* ssl, unsigned char* cookie, unsigned int* cookie_len);
 int StreamWebcam(SOCKET rtpSocket, sockaddr_in& dest, srtp_t* srtpSession);
-void listenThread(SOCKET rtpSocket);
+void RtpSocketListen(SOCKET rtpSocket);
+void SendStunBindingResponse(SOCKET rtpSocket, StunMessage& bindingRequest, sockaddr_in client);
 
 #define SSL_WHERE_INFO(ssl, w, flag, msg) {                \
     if(w & flag) {                                         \
@@ -139,36 +152,6 @@ enum class StunMessageTypes : uint16_t
   BindingRequest = 0x0001,
   BindingSuccessResponse = 0x0101,
   BindingErrorResponse = 0x0111,
-};
-
-/* Minimal STUN header. */
-class StunHeader
-{
-public:
-  static const int HEADER_LENGTH = 20;
-  static const uint32_t MAGIC_COOKIE = 0x2112A442;
-  static inline constexpr const uint8_t MAGIC_COOKIE_BYTES[] = { 0x21, 0x12, 0xA4, 0x42 };
-  static const int TRANSACTION_ID_LENGTH = 12;
-  static const uint8_t STUN_INITIAL_BYTE_MASK = 0xc0;
-
-  uint16_t Type = 0;                              // 12 bits.
-  uint16_t Length = 0;                            // 18 bits.
-  uint8_t TransactionID[TRANSACTION_ID_LENGTH];   // 96 bits.
-
-  void Deserialise(const uint8_t* buffer, int bufferLength)
-  {
-    if ((buffer[0] & STUN_INITIAL_BYTE_MASK) != 0) {
-      throw std::runtime_error("Could not deserialise STUN header, invalid first byte.");
-    }
-    else if (bufferLength < HEADER_LENGTH) {
-      throw std::runtime_error("Could not deserialise STUN header, buffer too small.");
-    }
-    else {
-      Type = ((buffer[0] << 8) & 0xff00) + buffer[1];
-      Length = ((buffer[2] << 8) & 0xff00) + buffer[3];
-      memcpy_s(TransactionID, TRANSACTION_ID_LENGTH, &buffer[8], TRANSACTION_ID_LENGTH);
-    }
-  }
 };
 
 /* STUN attribute types needed for this example. */
@@ -223,18 +206,18 @@ public:
     }
   }
 
-  static StunAttribute GetXorMappedAddrAttribute(uint8_t addrFamily, uint16_t port, uint32_t address)
+  static StunAttribute GetXorMappedAddrAttribute(uint8_t addrFamily, uint16_t port, uint32_t address, const uint8_t * magicCookie)
   {
     std::vector<uint8_t> val(XORMAPPED_ADDRESS_ATTRIBUTE_LENGTH);
 
     val[0] = 0x00;
     val[1] = addrFamily == AF_INET ? 0x01 : 0x02;
-    val[2] = (port >> 8) & 0xff ^ StunHeader::MAGIC_COOKIE_BYTES[0];
-    val[3] = port & 0xff ^ StunHeader::MAGIC_COOKIE_BYTES[1];
-    val[4] = (address >> 24) & 0xff ^ StunHeader::MAGIC_COOKIE_BYTES[0];
-    val[5] = (address >> 16) & 0xff ^ StunHeader::MAGIC_COOKIE_BYTES[1];
-    val[6] = (address >> 8) & 0xff ^ StunHeader::MAGIC_COOKIE_BYTES[2];
-    val[7] = address & 0xff ^ StunHeader::MAGIC_COOKIE_BYTES[3];
+    val[2] = (port >> 8) & 0xff ^ *magicCookie;
+    val[3] = port & 0xff ^ *(magicCookie + 1);
+    val[4] = (address >> 24) & 0xff ^ *magicCookie;
+    val[5] = (address >> 16) & 0xff ^ *(magicCookie + 1);
+    val[6] = (address >> 8) & 0xff ^ *(magicCookie + 2);
+    val[7] = address & 0xff ^ *(magicCookie + 3);
 
     StunAttribute att(StunAttributeTypes::XORMappedAddress, val);
     return att;
@@ -258,7 +241,16 @@ public:
 class StunMessage
 {
 public:
-  StunHeader Header;
+  static const int HEADER_LENGTH = 20;
+  static inline constexpr const uint8_t MAGIC_COOKIE_BYTES[] = { 0x21, 0x12, 0xA4, 0x42 };
+  static const int TRANSACTION_ID_LENGTH = 12;
+  static const uint8_t STUN_INITIAL_BYTE_MASK = 0xc0;
+
+  // Header fields.
+  uint16_t Type = 0;                              // 12 bits.
+  uint16_t Length = 0;                            // 18 bits.
+  uint8_t TransactionID[TRANSACTION_ID_LENGTH];   // 96 bits.
+
   std::vector<StunAttribute> Attributes;
 
   StunMessage()
@@ -266,12 +258,12 @@ public:
 
   StunMessage(StunMessageTypes messageType)
   {
-    Header.Type = (uint16_t)messageType;
+    Type = (uint16_t)messageType;
   }
 
-  void AddXorMappedAttribute(uint8_t addrFamily, uint16_t port, uint32_t address)
+  void AddXorMappedAttribute(uint8_t addrFamily, uint16_t port, uint32_t address, const uint8_t* magicCookie)
   {
-    auto xorAddrAttribute = StunAttribute::GetXorMappedAddrAttribute(addrFamily, port, address);
+    auto xorAddrAttribute = StunAttribute::GetXorMappedAddrAttribute(addrFamily, port, address, magicCookie);
     Attributes.push_back(xorAddrAttribute);
   }
 
@@ -335,27 +327,27 @@ public:
       messageLength += att.Length + att.Padding + StunAttribute::HEADER_LENGTH;
     }
 
-    *buf = (uint8_t*)calloc(messageLength + StunHeader::HEADER_LENGTH, 1);
+    *buf = (uint8_t*)calloc(messageLength + HEADER_LENGTH, 1);
 
     // Serialise header.
-    *(*buf) = (Header.Type >> 8) & 0x03;
-    *(*buf + 1) = Header.Type & 0xff;
+    *(*buf) = (Type >> 8) & 0x03;
+    *(*buf + 1) = Type & 0xff;
     *(*buf + 2) = (messageLength >> 8) & 0xff;
     *(*buf + 3) = messageLength & 0xff;
     // Magic Cookie
-    *(*buf + 4) = StunHeader::MAGIC_COOKIE_BYTES[0];
-    *(*buf + 5) = StunHeader::MAGIC_COOKIE_BYTES[1];
-    *(*buf + 6) = StunHeader::MAGIC_COOKIE_BYTES[2];
-    *(*buf + 7) = StunHeader::MAGIC_COOKIE_BYTES[3];
+    *(*buf + 4) = MAGIC_COOKIE_BYTES[0];
+    *(*buf + 5) = MAGIC_COOKIE_BYTES[1];
+    *(*buf + 6) = MAGIC_COOKIE_BYTES[2];
+    *(*buf + 7) = MAGIC_COOKIE_BYTES[3];
     // TransactionID.
     int bufPosn = 8;
-    while (bufPosn < StunHeader::HEADER_LENGTH) {
-      *(*buf + bufPosn) = Header.TransactionID[bufPosn - 8];
+    while (bufPosn < HEADER_LENGTH) {
+      *(*buf + bufPosn) = TransactionID[bufPosn - 8];
       bufPosn++;
     }
 
     // Serialise attributes.
-    bufPosn = StunHeader::HEADER_LENGTH;
+    bufPosn = HEADER_LENGTH;
     for (auto att : Attributes) {
       *(*buf + bufPosn++) = (att.Type) >> 8 & 0xff;
       *(*buf + bufPosn++) = att.Type & 0xff;
@@ -365,14 +357,24 @@ public:
       bufPosn += att.Length + att.Padding;
     }
 
-    return messageLength + StunHeader::HEADER_LENGTH;
+    return messageLength + HEADER_LENGTH;
   }
 
   void Deserialise(const uint8_t* buffer, int bufferLength)
   {
-    Header.Deserialise(buffer, bufferLength);
+    if ((buffer[0] & STUN_INITIAL_BYTE_MASK) != 0) {
+      throw std::runtime_error("Could not deserialise STUN header, invalid first byte.");
+    }
+    else if (bufferLength < HEADER_LENGTH) {
+      throw std::runtime_error("Could not deserialise STUN header, buffer too small.");
+    }
+    else {
+      Type = ((buffer[0] << 8) & 0xff00) + buffer[1];
+      Length = ((buffer[2] << 8) & 0xff00) + buffer[3];
+      memcpy_s(TransactionID, TRANSACTION_ID_LENGTH, &buffer[8], TRANSACTION_ID_LENGTH);
+    }
 
-    int bufPosn = Header.HEADER_LENGTH;
+    int bufPosn = HEADER_LENGTH;
 
     while (bufPosn < bufferLength) {
       StunAttribute att;
@@ -383,34 +385,6 @@ public:
     }
   }
 };
-
-int maintest()
-{
-  printf("test\n");
-
-  StunMessage stunBindingResp(StunMessageTypes::BindingSuccessResponse);
-  memset(stunBindingResp.Header.TransactionID, 0x00, StunHeader::TRANSACTION_ID_LENGTH);
-
-  stunBindingResp.AddXorMappedAttribute(AF_INET, 55477, INADDR_LOOPBACK);
-
-  std::cout << "XOR mapped address attribute value: " << HexStr(stunBindingResp.Attributes.back().Value.data(), stunBindingResp.Attributes.back().Value.size()) << std::endl;
-
-  stunBindingResp.AddHmacAttribute(ICE_PASSWORD, ICE_PASSWORD_LENGTH);
-
-  std::cout << "HMAC: " << HexStr(stunBindingResp.Attributes.back().Value.data(), stunBindingResp.Attributes.back().Value.size()) << std::endl;
-
-  stunBindingResp.AddFingerprintAttribute();
-
-  std::cout << "Fingerprint: " << HexStr(stunBindingResp.Attributes.back().Value.data(), stunBindingResp.Attributes.back().Value.size()) << std::endl;
-
-  // XOR Attribute Value: 0x00, 0x01, 0xf9, 0xa7, 0xe1, 0xba, 0xaf, 0x70
-  // HMAC: 3A 75 FD 56 9F AD 3C 7B 1B 8D AE 5C D1 17 00 D3 94 4E 18 F6
-  // Fingerprint: ED 98 87 49
-
-  printf("finished.\n");
-
-  return 0;
-}
 
 int main()
 {
@@ -456,11 +430,11 @@ int main()
     // Initialise libsrtp.
     srtp_init();
 
-    //----------------------
-    // The sockaddr_in structure specifies the address family,
-    // IP address, and port for the socket that is being bound.
+    //------
+    // Set up single UDP socket that will do all send/receive with the browser.
+    //------
     service.sin_family = AF_INET;
-    service.sin_addr.s_addr = INADDR_ANY; //htonl(INADDR_LOOPBACK);
+    service.sin_addr.s_addr = INADDR_ANY;
     service.sin_port = htons(RTP_LISTEN_PORT);
 
     rtpSocket = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
@@ -469,20 +443,18 @@ int main()
       goto done;
     }
 
-    //----------------------
-    // Bind the socket.
     iResult = bind(rtpSocket, (SOCKADDR*)&service, sizeof (service));
     if (iResult == SOCKET_ERROR) {
       wprintf(L"bind failed with error %u\n", WSAGetLastError());
       closesocket(rtpSocket);
       goto done;
     }
-    else {
-      wprintf(L"bind returned success\n");
-    }
 
-    //----
+    printf("Waiting for browser connection...\n");
+
+    //------
     // STUN
+    //------
     int recvResult = recvfrom(rtpSocket, (char*)recvBuffer, RECEIVE_BUFFER_LENGTH, 0, (sockaddr*)&clientAddr, &clientAddrLen);
     if (recvResult == SOCKET_ERROR) {
       wprintf(L"recvfrom failed with error %d\n", WSAGetLastError());
@@ -492,36 +464,19 @@ int main()
       printf("Received %d bytes from %s:%d.\n", recvResult, inet_ntoa(clientAddr.sin_addr), ntohs(clientAddr.sin_port));
       StunMessage stunMsg;
       stunMsg.Deserialise(recvBuffer, recvResult);
-      printf("STUN message type %d, message length %d.\n", stunMsg.Header.Type, stunMsg.Header.Length);
-      /* for (auto att : stunMsg.Attributes) {
-         printf("STUN message attribute type %d, attribute length %d.\n", att.Type, att.Length);
-       }*/
 
-       // Send binding success response.
-      if (stunMsg.Header.Type == (uint16_t)StunMessageTypes::BindingRequest) {
+      printf("STUN message received, type %d, message length %d.\n", stunMsg.Type, stunMsg.Length);
 
-        StunMessage stunBindingResp(StunMessageTypes::BindingSuccessResponse);
-        std::copy(stunMsg.Header.TransactionID, stunMsg.Header.TransactionID + StunHeader::TRANSACTION_ID_LENGTH, stunBindingResp.Header.TransactionID);
-
-        // Add required attributes.
-        stunBindingResp.AddXorMappedAttribute(clientAddr.sin_family, ntohs(clientAddr.sin_port), ntohl(clientAddr.sin_addr.s_addr));
-        stunBindingResp.AddHmacAttribute(ICE_PASSWORD, ICE_PASSWORD_LENGTH);
-        stunBindingResp.AddFingerprintAttribute();
-
-        uint8_t* respBuffer = nullptr;
-        int respBufferLength = stunBindingResp.Serialise(&respBuffer);
-
-        printf("Sending STUN response packet, length %d.\n", respBufferLength);
-
-        sendto(rtpSocket, (const char*)respBuffer, respBufferLength, 0, (sockaddr*)&clientAddr, sizeof(clientAddr));
-
-        free(respBuffer);
+       // Send binding success response. This response will trigger the browser to start the DTLS handshake.
+      if (stunMsg.Type == (uint16_t)StunMessageTypes::BindingRequest) {
+        printf("Sending initial STUN binding response.\n");
+        SendStunBindingResponse(rtpSocket, stunMsg, clientAddr);
       }
     }
 
-    //-----
+    //------
     // DTLS
-
+    //------
     ctx = SSL_CTX_new(DTLS_method());	// Copes with DTLS 1.0 and 1.2.
     if (!ctx) {
       printf("Error: cannot create SSL_CTX.\n");
@@ -588,7 +543,9 @@ int main()
       printf("DTLS Handshake completed.\n");
     }
 
-    /* Now libsrtp takes over.*/
+    //------
+    // SRTP
+    //------
     const char* label = "EXTRACTOR-dtls_srtp";
 
     r = SSL_export_keying_material(ssl,
@@ -636,9 +593,11 @@ int main()
       printf("SRTP session created.\n");
     }
 
-    // Have to keep responding to STUN binding requests or the connection will be flagged as disconnected.
-    std::thread t1(listenThread, rtpSocket);
+    // Need to keep responding to STUN binding requests or the connection will be flagged as disconnected.
+    std::thread listenThread(RtpSocketListen, rtpSocket);
 
+    // The connection with the browser should now be negotiated.
+    // Webcam sample streaming can commence.
     StreamWebcam(rtpSocket, clientAddr, srtpSession);
 
     delete(srtpSession);
@@ -677,6 +636,26 @@ done:
   WSACleanup();
 }
 
+void SendStunBindingResponse(SOCKET rtpSocket, StunMessage & bindingRequest, sockaddr_in client)
+{
+  StunMessage stunBindingResp(StunMessageTypes::BindingSuccessResponse);
+  std::copy(bindingRequest.TransactionID, bindingRequest.TransactionID + StunMessage::TRANSACTION_ID_LENGTH, stunBindingResp.TransactionID);
+
+  // Add required attributes.
+  stunBindingResp.AddXorMappedAttribute(client.sin_family, ntohs(client.sin_port), ntohl(client.sin_addr.s_addr), StunMessage::MAGIC_COOKIE_BYTES);
+  stunBindingResp.AddHmacAttribute(ICE_PASSWORD, ICE_PASSWORD_LENGTH);
+  stunBindingResp.AddFingerprintAttribute();
+
+  uint8_t* respBuffer = nullptr;
+  int respBufferLength = stunBindingResp.Serialise(&respBuffer);
+
+  //printf("Sending STUN response packet, length %d.\n", respBufferLength);
+
+  sendto(rtpSocket, (const char*)respBuffer, respBufferLength, 0, (sockaddr*)&client, sizeof(client));
+
+  free(respBuffer);
+}
+
 /*
 
 From RFC5764:
@@ -688,13 +667,13 @@ From RFC5764:
                    |       B < 2   -+--> forward to STUN
                    +----------------+
 */
-void listenThread(SOCKET rtpSocket)
+void RtpSocketListen(SOCKET rtpSocket)
 {
   unsigned char recvBuffer[RECEIVE_BUFFER_LENGTH];
   sockaddr_in clientAddr;
   int clientAddrLen = sizeof(clientAddr);
 
-  printf("Listener thread started.\n");
+  printf("RTP socket listener started.\n");
 
   while (true) {
     int recvResult = recvfrom(rtpSocket, (char*)recvBuffer, RECEIVE_BUFFER_LENGTH, 0, (sockaddr*)&clientAddr, &clientAddrLen);
@@ -702,46 +681,27 @@ void listenThread(SOCKET rtpSocket)
       wprintf(L"recvfrom failed with error %d\n", WSAGetLastError());
     }
     else {
-      printf("Received %d bytes from %s:%d.\n", recvResult, inet_ntoa(clientAddr.sin_addr), ntohs(clientAddr.sin_port));
+      //printf("Received %d bytes from %s:%d.\n", recvResult, inet_ntoa(clientAddr.sin_addr), ntohs(clientAddr.sin_port));
 
       // See section 5.1.2 RFC5764.
       if (recvBuffer[0] == 0x00 || recvBuffer[0] == 0x01) {
         // STUN packet.
-        printf("STUN packet received.\n");
+        //printf("STUN packet received.\n");
         StunMessage stunMsg;
         stunMsg.Deserialise(recvBuffer, recvResult);
-        printf("STUN message type %d, message length %d.\n", stunMsg.Header.Type, stunMsg.Header.Length);
-        /*for (auto att : stunMsg.Attributes) {
-          printf("STUN message attribute type %d, attribute length %d.\n", att.Type, att.Length);
-        }*/
+
         // Send binding success response.
-        if (stunMsg.Header.Type == (uint16_t)StunMessageTypes::BindingRequest) {
-
-          StunMessage stunBindingResp(StunMessageTypes::BindingSuccessResponse);
-          std::copy(stunMsg.Header.TransactionID, stunMsg.Header.TransactionID + StunHeader::TRANSACTION_ID_LENGTH, stunBindingResp.Header.TransactionID);
-
-          // Add required attributes.
-          stunBindingResp.AddXorMappedAttribute(clientAddr.sin_family, ntohs(clientAddr.sin_port), ntohl(clientAddr.sin_addr.s_addr));
-          stunBindingResp.AddHmacAttribute(ICE_PASSWORD, ICE_PASSWORD_LENGTH);
-          stunBindingResp.AddFingerprintAttribute();
-
-          uint8_t* respBuffer = nullptr;
-          int respBufferLength = stunBindingResp.Serialise(&respBuffer);
-
-          printf("Sending STUN response packet, length %d.\n", respBufferLength);
-
-          sendto(rtpSocket, (const char*)respBuffer, respBufferLength, 0, (sockaddr*)&clientAddr, sizeof(clientAddr));
-
-          free(respBuffer);
+        if (stunMsg.Type == (uint16_t)StunMessageTypes::BindingRequest) {
+          SendStunBindingResponse(rtpSocket, stunMsg, clientAddr);
         }
       }
       else if (recvBuffer[0] >= 128 && recvBuffer[0] <= 191) {
         // RTP/RTCP packet.
-        printf("RTP or RTCP packet received.\n");
+        //printf("RTP or RTCP packet received.\n");
       }
       else if (recvBuffer[0] >= 20 && recvBuffer[0] <= 63) {
         // DTLS packet.
-        printf("DTLS packet received.\n");
+        //printf("DTLS packet received.\n");
       }
       else {
         printf("Unknown packet type received.\n");
@@ -757,6 +717,10 @@ int StreamWebcam(SOCKET rtpSocket, sockaddr_in& dest, srtp_t* srtpSession)
   WCHAR* webcamFriendlyName;
   IMFMediaType* pSrcOutMediaType = NULL;
   UINT friendlyNameLength = 0;
+  LONG stride = 0;
+
+  vpx_codec_ctx_t* vpxCodec = nullptr;
+  vpx_image_t* rawImage = nullptr;
 
   uint16_t rtpSsrc = RTP_SSRC; // Supposed to be pseudo-random.
   uint16_t rtpSeqNum = 0;
@@ -784,6 +748,49 @@ int StreamWebcam(SOCKET rtpSocket, sockaddr_in& dest, srtp_t* srtpSession)
 
   printf("%s\n", GetMediaTypeDescription(pSrcOutMediaType).c_str());
 
+  CHECK_HR(GetDefaultStride(pSrcOutMediaType, &stride),
+    "Failed to get stride from source output media type.");
+
+  printf("Stride %d.\n", stride);
+
+  // Initialise the VPX encoder.
+  vpxCodec = new vpx_codec_ctx_t();
+  rawImage = new vpx_image_t();
+
+  vpx_codec_enc_cfg_t vpxConfig;
+  vpx_codec_err_t res;
+
+  printf("Using %s\n", vpx_codec_iface_name(vpx_codec_vp8_cx()));
+
+  /* Populate encoder configuration */
+  res = vpx_codec_enc_config_default((vpx_codec_vp8_cx()), &vpxConfig, 0);
+
+  if (res) {
+    printf("Failed to get VPX codec config: %s\n", vpx_codec_err_to_string(res));
+    goto done;
+  }
+  else {
+    vpx_img_alloc(rawImage, VPX_IMG_FMT_I420, OUTPUT_FRAME_WIDTH, OUTPUT_FRAME_HEIGHT, stride);
+
+    vpxConfig.g_w = OUTPUT_FRAME_WIDTH;
+    vpxConfig.g_h = OUTPUT_FRAME_HEIGHT;
+    vpxConfig.rc_target_bitrate = 300; // in kbps.
+    vpxConfig.rc_min_quantizer = 20; // 50;
+    vpxConfig.rc_max_quantizer = 30; // 60;
+    vpxConfig.g_pass = VPX_RC_ONE_PASS;
+    vpxConfig.rc_end_usage = VPX_CBR;
+    vpxConfig.g_error_resilient = VPX_ERROR_RESILIENT_DEFAULT;
+    vpxConfig.g_lag_in_frames = 0;
+    vpxConfig.rc_resize_allowed = 0;
+    vpxConfig.kf_max_dist = 20;
+
+    /* Initialize codec */
+    if (vpx_codec_enc_init(vpxCodec, (vpx_codec_vp8_cx()), &vpxConfig, 0)) {
+      printf("Failed to initialize libvpx encoder.\n");
+      goto done;
+    }
+  }
+
   // Ready to go.
 
   printf("Reading video samples from webcam.\n");
@@ -792,6 +799,7 @@ int StreamWebcam(SOCKET rtpSocket, sockaddr_in& dest, srtp_t* srtpSession)
   DWORD streamIndex = 0, flags = 0, sampleFlags = 0;
   LONGLONG llVideoTimeStamp, llSampleDuration;
   int sampleCount = 0;
+  UINT vp8Timestamp = 0;
 
   while (true)
   {
@@ -804,41 +812,57 @@ int StreamWebcam(SOCKET rtpSocket, sockaddr_in& dest, srtp_t* srtpSession)
       &pVideoSample                   // Receives the sample or NULL.
     ), "Error reading video sample.");
 
-    if (flags & MF_SOURCE_READERF_STREAMTICK)
-    {
-      printf("\tStream tick.\n");
-    }
-    if (flags & MF_SOURCE_READERF_ENDOFSTREAM)
-    {
-      printf("\tEnd of stream.\n");
-      break;
-    }
-    if (flags & MF_SOURCE_READERF_NEWSTREAM)
-    {
-      printf("\tNew stream.\n");
-      break;
-    }
-    if (flags & MF_SOURCE_READERF_NATIVEMEDIATYPECHANGED)
-    {
-      printf("\tNative type changed.\n");
-      break;
-    }
-    if (flags & MF_SOURCE_READERF_CURRENTMEDIATYPECHANGED)
-    {
-      printf("\tCurrent type changed.\n");
-      break;
-    }
-
     if (pVideoSample)
     {
       CHECK_HR(pVideoSample->SetSampleTime(llVideoTimeStamp), "Error setting the video sample time.");
       CHECK_HR(pVideoSample->GetSampleDuration(&llSampleDuration), "Error getting video sample duration.");
       CHECK_HR(pVideoSample->GetSampleFlags(&sampleFlags), "Error getting sample flags.");
 
+      IMFMediaBuffer* buf = NULL;
+      DWORD frameLength = 0, buffCurrLen = 0, buffMaxLen = 0;
+      byte* frameData = NULL;
+
+      CHECK_HR(pVideoSample->ConvertToContiguousBuffer(&buf),
+        "ConvertToContiguousBuffer failed.");
+
+      CHECK_HR(buf->GetCurrentLength(&frameLength),
+        "Get buffer length failed.");
+
+      CHECK_HR(buf->Lock(&frameData, &buffMaxLen, &buffCurrLen),
+        "Failed to lock video sample buffer.");
+
       //printf("Sample count %d, Sample flags %d, sample duration %I64d, sample time %I64d\n", sampleCount, sampleFlags, llSampleDuration, llVideoTimeStamp);
+      vpx_image_t* const img = vpx_img_wrap(rawImage, VPX_IMG_FMT_I420, OUTPUT_FRAME_WIDTH, OUTPUT_FRAME_HEIGHT, 1, frameData);
 
+      const vpx_codec_cx_pkt_t* pkt;
+      vpx_enc_frame_flags_t flags = 0;
 
-      SendRtpSample(rtpSocket, dest, srtpSession, pVideoSample, rtpSsrc, (uint32_t)(llVideoTimeStamp / 10000), &rtpSeqNum);
+      if (vpx_codec_encode(vpxCodec, rawImage, sampleCount, 1, flags, VPX_DL_REALTIME)) {
+        printf("VPX codec failed to encode the frame.\n");
+        goto done;
+      }
+      else {
+        vpx_codec_iter_t iter = NULL;
+
+        while ((pkt = vpx_codec_get_cx_data(vpxCodec, &iter))) {
+          switch (pkt->kind) {
+          case VPX_CODEC_CX_FRAME_PKT:
+            SendRtpSample(rtpSocket, dest, srtpSession, (byte *)pkt->data.raw.buf, pkt->data.raw.sz, rtpSsrc, vp8Timestamp, &rtpSeqNum);
+            break;
+          default:
+            break;
+          }
+        }
+      }
+
+      vpx_img_free(img);
+
+      CHECK_HR(buf->Unlock(),
+        "Failed to unlock video sample buffer.");  
+
+      SAFE_RELEASE(buf);
+
+      vp8Timestamp += VP8_TIMESTAMP_SPACING;
     }
     // *****
 
@@ -855,6 +879,9 @@ done:
   printf("finished.\n");
   auto c = getchar();
 
+  delete(vpxCodec);
+  delete(rawImage);
+
   SAFE_RELEASE(pVideoSource);
   SAFE_RELEASE(pVideoReader);
   SAFE_RELEASE(pSrcOutMediaType);
@@ -864,26 +891,9 @@ done:
   return 0;
 }
 
-HRESULT SendRtpSample(SOCKET socket, sockaddr_in& dst, srtp_t* srtpSession, IMFSample* pSample, uint32_t ssrc, uint32_t timestamp, uint16_t* seqNum)
+HRESULT SendRtpSample(SOCKET socket, sockaddr_in& dst, srtp_t* srtpSession, byte* frameData, size_t frameLength, uint32_t ssrc, uint32_t timestamp, uint16_t* seqNum)
 {
-  static uint16_t h264HeaderStart = 0x1c89;   // Start RTP packet in frame 0x1c 0x89
-  static uint16_t h264HeaderMiddle = 0x1c09;  // Middle RTP packet in frame 0x1c 0x09
-  static uint16_t h264HeaderEnd = 0x1c49;     // Last RTP packet in frame 0x1c 0x49
-
   HRESULT hr = S_OK;
-
-  IMFMediaBuffer* buf = NULL;
-  DWORD frameLength = 0, buffCurrLen = 0, buffMaxLen = 0;
-  byte* frameData = NULL;
-
-  hr = pSample->ConvertToContiguousBuffer(&buf);
-  CHECK_HR(hr, "ConvertToContiguousBuffer failed.");
-
-  hr = buf->GetCurrentLength(&frameLength);
-  CHECK_HR(hr, "Get buffer length failed.");
-
-  hr = buf->Lock(&frameData, &buffMaxLen, &buffCurrLen);
-  CHECK_HR(hr, "Failed to lock video sample buffer.");
 
   uint16_t pktSeqNum = *seqNum;
 
@@ -896,33 +906,18 @@ HRESULT SendRtpSample(SOCKET socket, sockaddr_in& dst, srtp_t* srtpSession, IMFS
     rtpHeader.SyncSource = ssrc;
     rtpHeader.SeqNum = pktSeqNum++;
     rtpHeader.Timestamp = timestamp;
-    rtpHeader.MarkerBit = 0;    // Set on first and last packet in frame.
+    rtpHeader.MarkerBit = (isLast) ? 1 : 0;    // Marker bit gets set on last packet in frame.
     rtpHeader.PayloadType = RTP_PAYLOAD_ID;
-
-    uint16_t h264Header = h264HeaderMiddle;
-
-    if (isLast)
-    {
-      // This is the First AND Last RTP packet in the frame.
-      h264Header = h264HeaderEnd;
-      rtpHeader.MarkerBit = 1;
-    }
-    else if (offset == 0)
-    {
-      h264Header = h264HeaderStart;
-      rtpHeader.MarkerBit = 1;
-    }
 
     uint8_t* hdrSerialised = NULL;
     rtpHeader.Serialise(&hdrSerialised);
 
-    int rtpPacketSize = RTP_HEADER_LENGTH + H264_RTP_HEADER_LENGTH + payloadLength;
+    int rtpPacketSize = RTP_HEADER_LENGTH + VP8_RTP_HEADER_LENGTH + payloadLength;
     int srtpPacketSize = rtpPacketSize + SRTP_AUTH_KEY_LENGTH;
     uint8_t* rtpPacket = (uint8_t*)malloc(srtpPacketSize);
     memcpy_s(rtpPacket, rtpPacketSize, hdrSerialised, RTP_HEADER_LENGTH);
-    rtpPacket[RTP_HEADER_LENGTH] = (byte)(h264Header >> 8 & 0xff);
-    rtpPacket[RTP_HEADER_LENGTH + 1] = (byte)(h264Header & 0xff);
-    memcpy_s(&rtpPacket[RTP_HEADER_LENGTH + H264_RTP_HEADER_LENGTH], payloadLength, &frameData[offset], payloadLength);
+    rtpPacket[RTP_HEADER_LENGTH] = (offset == 0) ? 0x10 : 0x00 ; // Set the VP8 header byte.
+    memcpy_s(&rtpPacket[RTP_HEADER_LENGTH + VP8_RTP_HEADER_LENGTH], payloadLength, &frameData[offset], payloadLength);
 
     //printf("Sending RTP packet, length %d.\n", rtpPacketSize);
 
@@ -941,12 +936,7 @@ HRESULT SendRtpSample(SOCKET socket, sockaddr_in& dst, srtp_t* srtpSession, IMFS
     free(rtpPacket);
   }
 
-  hr = buf->Unlock();
-  CHECK_HR(hr, "Failed to unlock video sample buffer.");
-
 done:
-
-  SAFE_RELEASE(buf);
 
   *seqNum = pktSeqNum;
 

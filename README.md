@@ -40,6 +40,10 @@ A set of minimal sample apps that demonstrate how to use certain parts of Micros
 
  - MFWebCamRtp - Stream webcam video over RTP to ffplay.
  
+ - MFWebCamWebRTC - Stream VP8 encoded webcam video to a WebRTC client (only works with Chrome).
+ 
+ - MFWebCamWebRTCH264 - **Not Working** Stream H264 encofed webcam video to a WebRTC client.
+ 
  
 
  
