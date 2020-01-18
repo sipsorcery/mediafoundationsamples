@@ -32,7 +32,7 @@ A set of minimal sample apps that demonstrate how to use certain parts of Micros
  
  - MFWebCamToFile - Captures 100 samples from default webcam to an mp4 file.
 
-### Video Capture -> H264 -> RTP
+### Webcam -> H264 -> RTP
 
  - MFWebCamToH264Buffer - Captures the video stream from a webcam to an H264 byte array by directly using the MFT H264 Encoder.
 
@@ -40,7 +40,7 @@ A set of minimal sample apps that demonstrate how to use certain parts of Micros
 
  - MFWebCamRtp - Stream webcam video over RTP to ffplay.
  
-### WebRTC
+### Webcam -> H264/VP8 -> WebRTC -> Web Browser
  
  - MFWebCamWebRTC - Stream VP8 encoded webcam video to a WebRTC client (only works with Chrome).
  
