@@ -15,10 +15,17 @@
 * of each connection.
 *
 * 1. Build and run this program.
-* 2. Open the mfwebrtc.html file in Chrome (doesn't work with other browsers).
+* 2. Open the mfwebrtc.html file in a browser.
 * 3. Press the Start button on the web page and the webcam feed should appear.
 *
-* Status: Works with Chrome (as of 17 Jan 2020).
+* Browser Interop (as of 19 Jan 2020):
+* - Works in Chrome.
+* - Works in Edge Chromium.
+* - Doesn't work in Firefox. Firefox requires a STUN binding request to be sent from the
+*   remote peer before it will initiate the DTLS handshake. To send a binding request
+*   the SDP answer from the browser is required (in order to get the ICE username and
+*   password). To get the SDP there needs to be some kind of signaling transport such
+*   a web socket. That would add a lot of noise to this example so stick to Chrome.
 *
 * Author:
 * Aaron Clauson (aaron@sipsorcery.com)

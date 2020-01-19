@@ -25,7 +25,7 @@
     <ProjectGuid>{923E40AD-BBE5-4697-857B-90F3AB8DA965}</ProjectGuid>
     <Keyword>Win32Proj</Keyword>
     <RootNamespace>MFWebCamToH264Buffer</RootNamespace>
-    <ProjectName>MFWebCamWebRTC</ProjectName>
+    <ProjectName>MFWebCamWebRTCH264</ProjectName>
     <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
