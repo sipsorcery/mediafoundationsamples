@@ -31,6 +31,8 @@ A set of minimal sample apps that demonstrate how to use certain parts of Micros
  - MFCaptureRawFramesToFile - Captures 100 samples from default webcam to file.
  
  - MFWebCamToFile - Captures 100 samples from default webcam to an mp4 file.
+ 
+ - MFSampleGrabber - Direct copy of the Sample Grabber Sink example from https://docs.microsoft.com/en-us/windows/win32/medfound/using-the-sample-grabber-sink.
 
 ### Webcam -> H264 -> RTP
 

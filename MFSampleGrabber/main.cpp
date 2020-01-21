@@ -1,5 +1,10 @@
-// MFSampleGrabber.cpp : This file contains the 'main' function. Program execution begins and ends there.
+//-----------------------------------------------------------------------------
+// Filename: main.cpp
 //
+// Description: Copy of sample from: 
+// https://docs.microsoft.com/en-us/windows/win32/medfound/using-the-sample-grabber-sink
+//
+//-----------------------------------------------------------------------------
 
 #include "SampleGrabber.h"
 
@@ -12,6 +17,8 @@ HRESULT CreateTopology(IMFMediaSource *pSource, IMFActivate *pVideoSink, IMFActi
 HRESULT RunSession(IMFMediaSession *pSession, IMFTopology *pTopology);
 HRESULT RunSampleGrabber(PCWSTR pszFileName);
 
+#define SOURCE_FILENAME L"../MediaFiles/big_buck_bunny.mp4"
+
 int wmain(int argc, wchar_t* argv[])
 {
   std::cout << "Sample Grabber test console starting..." << std::endl;
@@ -22,7 +29,7 @@ int wmain(int argc, wchar_t* argv[])
     hr = MFStartup(MF_VERSION);
     if(SUCCEEDED(hr))
     {
-      std::wstring path = L"C:\\Tools\\ffmpeg\\max_intro.mp4";
+      std::wstring path = SOURCE_FILENAME;
 
       std::chrono::steady_clock::time_point begin = std::chrono::steady_clock::now();
 

@@ -2,6 +2,13 @@
 
 // SampleGrabberCB implementation
 
+void printf_guid(REFGUID guid) {
+  printf("Guid = {%08lX-%04hX-%04hX-%02hhX%02hhX-%02hhX%02hhX%02hhX%02hhX%02hhX%02hhX}\n",
+    guid.Data1, guid.Data2, guid.Data3,
+    guid.Data4[0], guid.Data4[1], guid.Data4[2], guid.Data4[3],
+    guid.Data4[4], guid.Data4[5], guid.Data4[6], guid.Data4[7]);
+}
+
 // Create a new instance of the object.
 HRESULT SampleGrabberCB::CreateInstance(SampleGrabberCB **ppCB)
 {
@@ -83,6 +90,7 @@ STDMETHODIMP SampleGrabberCB::OnProcessSample(REFGUID guidMajorMediaType, DWORD 
   DWORD dwSampleSize)
 {
   // Display information about the sample.
+  printf_guid(guidMajorMediaType);
   printf("Sample: start = %I64d, duration = %I64d, bytes = %d\n", llSampleTime, llSampleDuration, dwSampleSize);
   return S_OK;
 }
