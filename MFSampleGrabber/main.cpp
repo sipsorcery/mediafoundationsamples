@@ -4,6 +4,12 @@
 // Description: Copy of sample from: 
 // https://docs.microsoft.com/en-us/windows/win32/medfound/using-the-sample-grabber-sink
 //
+// Remarks:
+// 21 Jan 2020  Aaron Clauson   Investigating why the guidMajorMediaType parameter
+// doesn't get set on the OnProcessSample callback. CAn be worked around by creating
+// two separate callback instances but seems like that shouldn't be necessary.
+// https://stackoverflow.com/questions/59839187/sample-grabber-sink-not-setting-media-type-guid
+//
 //-----------------------------------------------------------------------------
 
 #include "SampleGrabber.h"
@@ -72,7 +78,8 @@ HRESULT RunSampleGrabber(PCWSTR pszFileName)
 {
   IMFMediaSession *pSession = NULL;
   IMFMediaSource *pSource = NULL;
-  SampleGrabberCB *pSampleGrabberSinkCallback = NULL;
+  SampleGrabberCB *pAudioSampleGrabberSinkCallback = NULL;
+  SampleGrabberCB* pVideoSampleGrabberSinkCallback = NULL;
   IMFActivate *pAudioSinkActivate = NULL, *pVideoSinkActivate = NULL;
   IMFTopology *pTopology = NULL;
   IMFMediaType *pVideoType = NULL, *pAudioType = NULL;
@@ -93,9 +100,10 @@ HRESULT RunSampleGrabber(PCWSTR pszFileName)
   CHECK_HR(hr = pAudioType->SetUINT32(MF_MT_AUDIO_SAMPLES_PER_SECOND, 8000));
 
   // Create the sample grabber sink.
-  CHECK_HR(hr = SampleGrabberCB::CreateInstance(&pSampleGrabberSinkCallback));
-  CHECK_HR(hr = MFCreateSampleGrabberSinkActivate(pAudioType, pSampleGrabberSinkCallback, &pAudioSinkActivate));
-  CHECK_HR(hr = MFCreateSampleGrabberSinkActivate(pVideoType, pSampleGrabberSinkCallback, &pVideoSinkActivate));
+  CHECK_HR(hr = SampleGrabberCB::CreateInstance(&pAudioSampleGrabberSinkCallback, MFMediaType_Audio));
+  CHECK_HR(hr = SampleGrabberCB::CreateInstance(&pVideoSampleGrabberSinkCallback, MFMediaType_Video));
+  CHECK_HR(hr = MFCreateSampleGrabberSinkActivate(pAudioType, pAudioSampleGrabberSinkCallback, &pAudioSinkActivate));
+  CHECK_HR(hr = MFCreateSampleGrabberSinkActivate(pVideoType, pVideoSampleGrabberSinkCallback, &pVideoSinkActivate));
 
   // To run as fast as possible, set this attribute (requires Windows 7):
   //CHECK_HR(hr = pSinkActivate->SetUINT32(MF_SAMPLEGRABBERSINK_IGNORE_CLOCK, TRUE));
@@ -125,7 +133,8 @@ done:
 
   SafeRelease(&pSession);
   SafeRelease(&pSource);
-  SafeRelease(&pSampleGrabberSinkCallback);
+  SafeRelease(&pAudioSampleGrabberSinkCallback);
+  SafeRelease(&pVideoSampleGrabberSinkCallback);
   SafeRelease(&pAudioSinkActivate);
   SafeRelease(&pVideoSinkActivate);
   SafeRelease(&pTopology);

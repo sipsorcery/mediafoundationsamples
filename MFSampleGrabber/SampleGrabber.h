@@ -30,8 +30,11 @@ class SampleGrabberCB: public IMFSampleGrabberSinkCallback
 
   SampleGrabberCB(): m_cRef(1) {}
 
+private:
+  GUID _majorMediaType;
+
 public:
-  static HRESULT CreateInstance(SampleGrabberCB **ppCB);
+  static HRESULT CreateInstance(SampleGrabberCB **ppCB, REFGUID majorMediaType);
 
   // IUnknown methods
   STDMETHODIMP QueryInterface(REFIID iid, void** ppv);

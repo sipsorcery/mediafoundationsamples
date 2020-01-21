@@ -10,7 +10,7 @@ void printf_guid(REFGUID guid) {
 }
 
 // Create a new instance of the object.
-HRESULT SampleGrabberCB::CreateInstance(SampleGrabberCB **ppCB)
+HRESULT SampleGrabberCB::CreateInstance(SampleGrabberCB **ppCB, REFGUID majorMediaType)
 {
   *ppCB = new (std::nothrow) SampleGrabberCB();
 
@@ -18,6 +18,9 @@ HRESULT SampleGrabberCB::CreateInstance(SampleGrabberCB **ppCB)
   {
     return E_OUTOFMEMORY;
   }
+
+  (*ppCB)->_majorMediaType = majorMediaType;
+
   return S_OK;
 }
 
@@ -90,7 +93,8 @@ STDMETHODIMP SampleGrabberCB::OnProcessSample(REFGUID guidMajorMediaType, DWORD 
   DWORD dwSampleSize)
 {
   // Display information about the sample.
-  printf_guid(guidMajorMediaType);
+  //printf_guid(guidMajorMediaType);
+  printf_guid(_majorMediaType);
   printf("Sample: start = %I64d, duration = %I64d, bytes = %d\n", llSampleTime, llSampleDuration, dwSampleSize);
   return S_OK;
 }
