@@ -8,7 +8,7 @@ A set of minimal sample apps that demonstrate how to use certain parts of Micros
 
  - MFAudio - Play audio from file on speaker.
  
- - MFTopology - Plays an mp4 file using the Enhanced Video Renderer in a separate Window. TODO: Audio not working.
+ - MFTopology - Plays audio and video from an mp4 file using the Enhanced Video Renderer and Streaming Audio Renderer.
  
  - MFBitmapToEVR - Displays a byte array representing a bitmap on the Enhanced Video Renderer.
  

@@ -20,6 +20,8 @@
 * 01 Jan 2015	  Aaron Clauson	  Created, Hobart, Australia.
 * 17 Sep 2015   Aaron Clauson   Added the video playback option in addition to the 
 *                               audio one. Can only get one at a time working so far.
+* 22 Jan 2020		Aaron Clauson		Added separate topology nodes for audio and video.
+*																Simultaneous audio & video playback now working.
 *
 * License: Public Domain (no warranty, use at own risk)
 /******************************************************************************/
@@ -49,6 +51,55 @@ const WCHAR WINDOW_NAME[] = L"MFVideo";
 // Globals.
 HWND _hwnd;
 
+// Add a source node to a topology.
+HRESULT AddSourceNode(
+	IMFTopology* pTopology,           // Topology.
+	IMFMediaSource* pSource,          // Media source.
+	IMFPresentationDescriptor* pPD,   // Presentation descriptor.
+	IMFStreamDescriptor* pSD,         // Stream descriptor.
+	IMFTopologyNode** ppNode)         // Receives the node pointer.
+{
+	IMFTopologyNode* pNode = NULL;
+
+	CHECK_HR(MFCreateTopologyNode(MF_TOPOLOGY_SOURCESTREAM_NODE, &pNode), "Failed to create topology node.");
+	CHECK_HR(pNode->SetUnknown(MF_TOPONODE_SOURCE, pSource), "Failed to set source on topology node.");
+	CHECK_HR(pNode->SetUnknown(MF_TOPONODE_PRESENTATION_DESCRIPTOR, pPD), "Failed to set presentation descriptor on topology node.");
+	CHECK_HR(pNode->SetUnknown(MF_TOPONODE_STREAM_DESCRIPTOR, pSD), "Failed to set stream descriptor on topology node.");
+	CHECK_HR(pTopology->AddNode(pNode), "Failed to add node to topology.");
+
+	// Return the pointer to the caller.
+	*ppNode = pNode;
+	(*ppNode)->AddRef();
+
+done:
+	SAFE_RELEASE(&pNode);
+	return S_OK;
+}
+
+// Add an output node to a topology.
+HRESULT AddOutputNode(
+	IMFTopology* pTopology,     // Topology.
+	IMFActivate* pActivate,     // Media sink activation object.
+	DWORD dwId,                 // Identifier of the stream sink.
+	IMFTopologyNode** ppNode)   // Receives the node pointer.
+{
+	IMFTopologyNode* pNode = NULL;
+
+	CHECK_HR(MFCreateTopologyNode(MF_TOPOLOGY_OUTPUT_NODE, &pNode), "Failed to create topology node.");
+	CHECK_HR(pNode->SetObject(pActivate), "Failed to set sink on topology node.");
+	CHECK_HR(pNode->SetUINT32(MF_TOPONODE_STREAMID, dwId), "Failed to set stream ID on topology node.");
+	CHECK_HR(pNode->SetUINT32(MF_TOPONODE_NOSHUTDOWN_ON_REMOVE, FALSE), "Failed to set no shutdown on topology node.");
+	CHECK_HR(pTopology->AddNode(pNode), "Failed to add node to the topology.");
+
+	// Return the pointer to the caller.
+	*ppNode = pNode;
+	(*ppNode)->AddRef();
+
+done:
+	SAFE_RELEASE(&pNode);
+	return S_OK;
+}
+
 int main()
 {
 	IMFSourceResolver* pSourceResolver = NULL;
@@ -60,13 +111,13 @@ int main()
 	IMFMediaSession *pSession = NULL;
 	MF_OBJECT_TYPE ObjectType = MF_OBJECT_TYPE::MF_OBJECT_INVALID;
 	IMFMediaTypeHandler *pHandler = NULL;
-	IMFActivate *pActivate = NULL;
-	IMFTopologyNode *pSourceNode = NULL, *pOutputNode = NULL;
-	BOOL fSelected = FALSE;
+	IMFActivate *pAudioActivate = NULL, * pVideoActivate = NULL;
 	PROPVARIANT varStart;
 	DWORD sourceStreamCount = 0;
 	IMFStreamSink *pOutputSink = NULL;
 	IMFMediaType *pOutputNodeMediaType = NULL;
+	IMFTopologyNode* pAudioSourceNode = NULL, * pVideoSourceNode = NULL;
+	IMFTopologyNode* pAudioSinkNode = NULL, * pVideoSinkNode = NULL;
 
 	// Create a separate Window and thread to host the Video player.
 	CreateThread(NULL, 0, (LPTHREAD_START_ROUTINE)InitializeWindow, NULL, 0, NULL);
@@ -113,60 +164,44 @@ int main()
 		
 	printf("Source stream count %i.\n", sourceStreamCount); 
 
-	// Iterate over the available source streams and create renderers.
+	// Iterate over the available source streams and create renderer's.
 	for (DWORD i = 0; i < sourceStreamCount; i++)
 	{
+		BOOL fSelected = FALSE;
+		GUID guidMajorType;
+
 		CHECK_HR(pSourcePD->GetStreamDescriptorByIndex(i, &fSelected, &pSourceSD), 
 			"Failed to get stream descriptor from presentation descriptor.");
 
 		CHECK_HR(pSourceSD->GetMediaTypeHandler(&pHandler), 
 			"Failed to create media type handler from presentation descriptor.");
 
-		GUID guidMajorType;
 		CHECK_HR(pHandler->GetMajorType(&guidMajorType), 
 			"Failed to get media type handler from source stream.");
 
-		if (guidMajorType == MFMediaType_Audio)
+		if (guidMajorType == MFMediaType_Audio && fSelected)
 		{
 			printf("Creating audio renderer for stream index %i.\n", i);
-			CHECK_HR(MFCreateAudioRendererActivate(&pActivate), 
-				"Failed to create audio renderer activate object.");
+
+			CHECK_HR(MFCreateAudioRendererActivate(&pAudioActivate), "Failed to create audio renderer activate object.");
+			CHECK_HR(AddSourceNode(pTopology, pSource, pSourcePD, pSourceSD, &pAudioSourceNode), "Failed to add audio source node");
+			CHECK_HR(AddOutputNode(pTopology, pAudioActivate, 0, &pAudioSinkNode), "Failed to add audio output node.");
+			CHECK_HR(pAudioSourceNode->ConnectOutput(0, pAudioSinkNode, 0), "Failed to connect audio source and sink nodes.");
 		}
-		else if (guidMajorType == MFMediaType_Video)
+		else if (guidMajorType == MFMediaType_Video && fSelected)
 		{
 			printf("Creating video renderer for stream index %i.\n", i);
-			CHECK_HR(MFCreateVideoRendererActivate(_hwnd, &pActivate), 
-				"Failed to create video renderer activate object.");
+
+			CHECK_HR(MFCreateVideoRendererActivate(_hwnd, &pVideoActivate), "Failed to create video renderer activate object.");
+			CHECK_HR(AddSourceNode(pTopology, pSource, pSourcePD, pSourceSD, &pVideoSourceNode), "Failed to add video source node");
+			CHECK_HR(AddOutputNode(pTopology, pVideoActivate, 0, &pVideoSinkNode), "Failed to add video output node.");
+			CHECK_HR(pVideoSourceNode->ConnectOutput(0, pVideoSinkNode, 0), "Failed to connect video source and sink nodes.");
+		}
+		else
+		{
+			CHECK_HR(pSourcePD->DeselectStream(i), "Error deselecting source stream.");
 		}
 	}
-
-	// Creating and adding source node to topology.
-	CHECK_HR(MFCreateTopologyNode(MF_TOPOLOGY_SOURCESTREAM_NODE, &pSourceNode), "Failed to create source node.");
-	CHECK_HR(pSourceNode->SetUnknown(MF_TOPONODE_SOURCE, pSource), "Failed to set top node source on topology node.");
-	CHECK_HR(pSourceNode->SetUnknown(MF_TOPONODE_PRESENTATION_DESCRIPTOR, pSourcePD), "Failed to set presentation descriptor on topology node.");
-	CHECK_HR(pSourceNode->SetUnknown(MF_TOPONODE_STREAM_DESCRIPTOR, pSourceSD), "Failed to set stream descriptor on topology node.");
-
-	CHECK_HR(pTopology->AddNode(pSourceNode), 
-		"Failed to add source node to topology.");
-
-	// Creating and adding output node to topology.
-	CHECK_HR(MFCreateTopologyNode(MF_TOPOLOGY_OUTPUT_NODE, &pOutputNode), 
-		"Failed to create sink node.");
-
-	CHECK_HR(pOutputNode->SetObject(pActivate), 
-		"Failed to set the activate object on the output node.");
-
-	CHECK_HR(pOutputNode->SetUINT32(MF_TOPONODE_STREAMID, 0), 
-		"Failed to set the stream ID on the output node.");
-
-	CHECK_HR(pOutputNode->SetUINT32(MF_TOPONODE_NOSHUTDOWN_ON_REMOVE, FALSE), 
-		"Failed to set the no shutdown attribute on the output node.");
-
-	CHECK_HR(pTopology->AddNode(pOutputNode), 
-		"Failed to add output node to topology.");
-
-	CHECK_HR(pSourceNode->ConnectOutput(0, pOutputNode, 0), 
-		"Failed to connect the source node to the output node.");
 
 	CHECK_HR(pSession->SetTopology(0, pTopology), 
 		"Failed to set the topology on the session.");
@@ -189,9 +224,12 @@ done:
 	SAFE_RELEASE(pSource);
 	SAFE_RELEASE(pSession);
 	SAFE_RELEASE(pHandler);
-	SAFE_RELEASE(pActivate);
-	SAFE_RELEASE(pSourceNode);
-  SAFE_RELEASE(pOutputNode);
+	SAFE_RELEASE(pAudioActivate);
+	SAFE_RELEASE(pVideoActivate);
+	SAFE_RELEASE(pAudioSourceNode);
+  SAFE_RELEASE(pVideoSourceNode);
+	SAFE_RELEASE(pAudioSinkNode);
+	SAFE_RELEASE(pVideoSinkNode);
 	SAFE_RELEASE(pOutputSink);
 	SAFE_RELEASE(pOutputNodeMediaType);
 

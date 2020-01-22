@@ -93,8 +93,8 @@ STDMETHODIMP SampleGrabberCB::OnProcessSample(REFGUID guidMajorMediaType, DWORD 
   DWORD dwSampleSize)
 {
   // Display information about the sample.
-  //printf_guid(guidMajorMediaType);
-  printf_guid(_majorMediaType);
+  printf_guid(guidMajorMediaType);
+  //printf_guid(_majorMediaType);
   printf("Sample: start = %I64d, duration = %I64d, bytes = %d\n", llSampleTime, llSampleDuration, dwSampleSize);
   return S_OK;
 }
