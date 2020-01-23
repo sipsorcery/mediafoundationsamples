@@ -10,7 +10,7 @@
 * Aaron Clauson (aaron@sipsorcery.com)
 *
 * Status:
-* Work in Progress.
+* Is this even possible or sensible? Still investigating.
 *
 * History:
 * 22 Jan 2020	  Aaron Clauson	  Created, Dublin, Ireland.
