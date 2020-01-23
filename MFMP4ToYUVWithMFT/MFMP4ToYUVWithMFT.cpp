@@ -1,6 +1,10 @@
 /******************************************************************************
 * Filename: MFMP4ToYUVWithMFT.cpp
 *
+* Postscript: See sample MFMP4ToYUVWithoutMFT (note the WITHOUT) to achieve the 
+* same things as this sample without having to wire up the H264 decoder. This 
+* sample could still be useful if exploring how to use transforms.
+*
 * Description:
 * This file contains a C++ console application that reads H264 encoded video
 * frames from an mp4 file and decodes them to a YUV pixel format and dumps them
@@ -42,9 +46,7 @@
 #pragma comment(lib, "mfuuid.lib")
 #pragma comment(lib, "wmcodecdspuuid.lib")
 
-#define VIDEO_SAMPLE_WIDTH 640	// Needs to match the video frame width in the input file.
-#define VIDEO_SAMPLE_HEIGHT 360 // Needs to match the video frame height in the input file.
-#define SAMPLE_COUNT 10000
+#define SAMPLE_COUNT 100
 #define SOURCE_FILENAME L"../MediaFiles/big_buck_bunny.mp4"
 #define CAPTURE_FILENAME "rawframes.yuv"
 

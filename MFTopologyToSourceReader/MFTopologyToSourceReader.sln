@@ -1,0 +1,25 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 16
+VisualStudioVersion = 16.0.29709.97
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "MFTopologyToSourceReader", "MFTopologyToSourceReader.vcxproj", "{C152E878-1BB8-4133-9322-B99AE1B3C3DF}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|x86 = Debug|x86
+		Release|x86 = Release|x86
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{C152E878-1BB8-4133-9322-B99AE1B3C3DF}.Debug|x86.ActiveCfg = Debug|Win32
+		{C152E878-1BB8-4133-9322-B99AE1B3C3DF}.Debug|x86.Build.0 = Debug|Win32
+		{C152E878-1BB8-4133-9322-B99AE1B3C3DF}.Release|x86.ActiveCfg = Release|Win32
+		{C152E878-1BB8-4133-9322-B99AE1B3C3DF}.Release|x86.Build.0 = Release|Win32
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {EA430983-16E2-41F3-B947-4C4FB27C9C11}
+	EndGlobalSection
+EndGlobal

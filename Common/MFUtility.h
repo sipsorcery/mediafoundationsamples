@@ -616,7 +616,7 @@ HRESULT GetVideoSourceFromDevice(UINT nDevice, IMFMediaSource** ppVideoSource, I
 
   // Get the first available webcam.
   hr = MFCreateAttributes(&videoConfig, 1);
-  CHECK_HR(hr, "Error creating video configuation.");
+  CHECK_HR(hr, "Error creating video configuration.");
 
   // Request video capture devices.
   hr = videoConfig->SetGUID(
@@ -628,7 +628,7 @@ HRESULT GetVideoSourceFromDevice(UINT nDevice, IMFMediaSource** ppVideoSource, I
   CHECK_HR(hr, "Error enumerating video devices.");
 
   hr = videoDevices[nDevice]->GetAllocatedString(MF_DEVSOURCE_ATTRIBUTE_FRIENDLY_NAME, &webcamFriendlyName, &nameLength);
-  CHECK_HR(hr, "Error retrieving vide device friendly name.\n");
+  CHECK_HR(hr, "Error retrieving video device friendly name.\n");
 
   wprintf(L"First available webcam: %s\n", webcamFriendlyName);
 
@@ -636,7 +636,7 @@ HRESULT GetVideoSourceFromDevice(UINT nDevice, IMFMediaSource** ppVideoSource, I
   CHECK_HR(hr, "Error activating video device.");
 
   CHECK_HR(MFCreateAttributes(&pAttributes, 1),
-    "Failed to create attribtues.");
+    "Failed to create attributes.");
 
   // Adding this attribute creates a video source reader that will handle
   // colour conversion and avoid the need to manually convert between RGB24 and RGB32 etc.
