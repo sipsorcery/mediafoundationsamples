@@ -12,7 +12,7 @@ A set of minimal sample apps that demonstrate how to use certain parts of Micros
  
  - MFBitmapToEVR - Displays a byte array representing a bitmap on the Enhanced Video Renderer.
  
- - MFBitmapMFTToEVR - Performs a colour conversion on a bitmap byte array and then dislays on the Enhanced Video Renderer. 
+ - MFBitmapMFTToEVR - Performs a colour conversion on a bitmap byte array and then displays on the Enhanced Video Renderer. 
  
  - MFVideoEVR - Display video from an mp4 file in Window WITHOUT using a topology. Write samples to video renderer directly from buffer.
  
@@ -20,7 +20,7 @@ A set of minimal sample apps that demonstrate how to use certain parts of Micros
  
  - MFVideoEVRWebcamMFT - Same as the `MFVideoEVRWebcam` sample but manually wires up a color conversion MFT transform instead of setting MF_SOURCE_READER_ENABLE_VIDEO_PROCESSING on the video source reader.  
  
- - WpfMediaUWA - Initial foray into how Media Foundation can work with WPF in a Universal Windows Application (UWA). UWA is currently impractical due to [deployment contraints](https://docs.microsoft.com/en-us/windows/apps/desktop/choose-your-platform), i.e. Windows Store only. Hopefully in 2020 with the introduction of [Windows UI 3.0](https://docs.microsoft.com/en-us/uwp/toolkits/) using the types of controls in this sample will become practical.
+ - WpfMediaUWA - Initial foray into how Media Foundation can work with WPF in a Universal Windows Application (UWA). UWA is currently impractical due to [deployment constraints](https://docs.microsoft.com/en-us/windows/apps/desktop/choose-your-platform), i.e. Windows Store only. Hopefully in 2020 with the introduction of [Windows UI 3.0](https://docs.microsoft.com/en-us/uwp/toolkits/) using the types of controls in this sample will become practical.
  
 ### Plumbing
 
@@ -28,7 +28,7 @@ A set of minimal sample apps that demonstrate how to use certain parts of Micros
  
  - MFMP4ToYUVWithMFT - Reads H264 encoded video frames from an mp4 file and decodes them to a YUV pixel format and dumps them to an output file.
  
- - MFMP4ToYUVWithoutMFT - Same as the previouse (MFMP4ToYUVWithMFT) sample but WITHOUT having to wire up teh H264 decoder. Reads H264 encoded video frames from an mp4 file and decodes them to a YUV pixel format and dumps them to an output file.
+ - MFMP4ToYUVWithoutMFT - Same as the previous (MFMP4ToYUVWithMFT) sample but WITHOUT having to wire up the H264 decoder. Reads H264 encoded video frames from an mp4 file and decodes them to a YUV pixel format and dumps them to an output file.
  
  - MFCaptureRawFramesToFile - Captures 100 samples from default webcam to file.
  
