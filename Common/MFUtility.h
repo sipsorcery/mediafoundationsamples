@@ -405,7 +405,7 @@ std::string GetMediaTypeDescription(IMFMediaType* pMediaType)
       }
       else if (guidId == MF_MT_FRAME_RATE)
       {
-        // Framte rate is numerator/denominator.
+        // Frame rate is numerator/denominator.
         description += std::to_string(HI32(Val)) + "/" + std::to_string(LO32(Val));
       }
       else if (guidId == MF_MT_PIXEL_ASPECT_RATIO)
@@ -538,7 +538,7 @@ HRESULT ListCaptureDevices(DeviceType deviceType)
   HRESULT hr = S_OK;
 
   hr = MFCreateAttributes(&pDeviceAttributes, 1);
-  CHECK_HR(hr, "Error creating device attribtues.");
+  CHECK_HR(hr, "Error creating device attributes.");
 
   if (deviceType == DeviceType::Audio) {
     // Request audio capture devices.
@@ -627,28 +627,34 @@ HRESULT GetVideoSourceFromDevice(UINT nDevice, IMFMediaSource** ppVideoSource, I
   hr = MFEnumDeviceSources(videoConfig, &videoDevices, &videoDeviceCount);
   CHECK_HR(hr, "Error enumerating video devices.");
 
-  hr = videoDevices[nDevice]->GetAllocatedString(MF_DEVSOURCE_ATTRIBUTE_FRIENDLY_NAME, &webcamFriendlyName, &nameLength);
-  CHECK_HR(hr, "Error retrieving video device friendly name.\n");
+  if (nDevice >= videoDeviceCount) {
+    printf("The device index of %d was invalid for available device count of %d.\n", nDevice, videoDeviceCount);
+    hr = E_INVALIDARG;
+  }
+  else {
+    hr = videoDevices[nDevice]->GetAllocatedString(MF_DEVSOURCE_ATTRIBUTE_FRIENDLY_NAME, &webcamFriendlyName, &nameLength);
+    CHECK_HR(hr, "Error retrieving video device friendly name.\n");
 
-  wprintf(L"First available webcam: %s\n", webcamFriendlyName);
+    wprintf(L"First available webcam: %s\n", webcamFriendlyName);
 
-  hr = videoDevices[nDevice]->ActivateObject(IID_PPV_ARGS(ppVideoSource));
-  CHECK_HR(hr, "Error activating video device.");
+    hr = videoDevices[nDevice]->ActivateObject(IID_PPV_ARGS(ppVideoSource));
+    CHECK_HR(hr, "Error activating video device.");
 
-  CHECK_HR(MFCreateAttributes(&pAttributes, 1),
-    "Failed to create attributes.");
+    CHECK_HR(MFCreateAttributes(&pAttributes, 1),
+      "Failed to create attributes.");
 
-  // Adding this attribute creates a video source reader that will handle
-  // colour conversion and avoid the need to manually convert between RGB24 and RGB32 etc.
-  CHECK_HR(pAttributes->SetUINT32(MF_SOURCE_READER_ENABLE_VIDEO_PROCESSING, 1),
-    "Failed to set enable video processing attribute.");
+    // Adding this attribute creates a video source reader that will handle
+    // colour conversion and avoid the need to manually convert between RGB24 and RGB32 etc.
+    CHECK_HR(pAttributes->SetUINT32(MF_SOURCE_READER_ENABLE_VIDEO_PROCESSING, 1),
+      "Failed to set enable video processing attribute.");
 
-  // Create a source reader.
-  hr = MFCreateSourceReaderFromMediaSource(
-    *ppVideoSource,
-    pAttributes,
-    ppVideoReader);
-  CHECK_HR(hr, "Error creating video source reader.");
+    // Create a source reader.
+    hr = MFCreateSourceReaderFromMediaSource(
+      *ppVideoSource,
+      pAttributes,
+      ppVideoReader);
+    CHECK_HR(hr, "Error creating video source reader.");
+  }
 
 done:
 
@@ -799,7 +805,7 @@ done:
 
 /**
 * Status: This method is an attempt to match media types. This method is still
-* a work in progress. Not exactly sure how this should worl (AC Jan 2020).
+* a work in progress. Not exactly sure how this should work (AC Jan 2020).
 * Iterates the sink media's available type in an attempt to find
 * one it is happy with.
 * @param[in] SinkMediaTypeHandler: the sink media handler to find a matching media type for.
@@ -841,7 +847,7 @@ done:
 /**
 * Dumps the media buffer contents of an IMF sample to a file stream.
 * @param[in] pSample: pointer to the media sample to dump the contents from.
-* @param[in] pFileStream: pointer to the file stream to wrtie to.
+* @param[in] pFileStream: pointer to the file stream to write to.
 * @@Returns S_OK if successful or an error code if not.
 */
 HRESULT WriteSampleToFile(IMFSample* pSample, std::ofstream* pFileStream)
@@ -905,7 +911,7 @@ done:
 /**
 * Creates a new media sample and copies the first media buffer from the source to it.
 * @param[in] pSrcSample: size of the media buffer to set on the create media sample.
-* @param[out] pDstSample: pointer to the the media sample created.
+* @param[out] pDstSample: pointer to the media sample created.
 * @@Returns S_OK if successful or an error code if not.
 */
 HRESULT CreateAndCopySingleBufferIMFSample(IMFSample* pSrcSample, IMFSample** pDstSample)
@@ -983,7 +989,7 @@ HRESULT GetTransformOutput(IMFTransform* pTransform, IMFSample** pOutSample, BOO
       printf("MFT stream changed.\n");
 
       hr = pTransform->GetOutputAvailableType(0, 0, &pChangedOutMediaType);
-      CHECK_HR(hr, "Failed to get the MFT ouput media type after a stream change.");
+      CHECK_HR(hr, "Failed to get the MFT output media type after a stream change.");
 
       std::cout << "MFT output media type: " << GetMediaTypeDescription(pChangedOutMediaType) << std::endl << std::endl;
 
