@@ -79,6 +79,7 @@ int main()
   IMF2DBuffer* p2DBuffer = NULL;
   RECT rc = { 0, 0, BITMAP_WIDTH, BITMAP_HEIGHT };
   BOOL fSelected = false;
+  BYTE* bitmapBuffer = new BYTE[4 * BITMAP_WIDTH * BITMAP_HEIGHT]; // RGB32
 
   CHECK_HR(CoInitializeEx(NULL, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE),
     "COM initialisation failed.");
@@ -188,7 +189,6 @@ int main()
   CHECK_HR(pClock->Start(0), "Error starting presentation clock.");
 
   // Start writing bitmaps.
-  BYTE* bitmapBuffer = new BYTE[4 * BITMAP_WIDTH * BITMAP_HEIGHT]; // RGB32
   DWORD bitmapBufferLength = 4 * BITMAP_WIDTH * BITMAP_HEIGHT;
   LONGLONG llTimeStamp = 0;
   UINT bitmapCount = 0;
@@ -227,15 +227,14 @@ int main()
     llTimeStamp += sampleDuration;
   }
 
-  delete[] bitmapBuffer;
-  SAFE_RELEASE(p2DBuffer);
-  SAFE_RELEASE(pDstBuffer);
-
 done:
 
   printf("finished.\n");
   auto c = getchar();
 
+  delete[] bitmapBuffer;
+  SAFE_RELEASE(p2DBuffer);
+  SAFE_RELEASE(pDstBuffer);
   SAFE_RELEASE(pVideoOutType);
   SAFE_RELEASE(pVideoSink);
   SAFE_RELEASE(pStreamSink);
