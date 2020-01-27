@@ -47,8 +47,8 @@
 
 #define BITMAP_WIDTH  640
 #define BITMAP_HEIGHT 480
-#define SAMPLE_DURATION 10000000 // 10^7 corresponds to 1 second.
-#define SAMPLE_COUNT 10
+#define SAMPLE_DURATION 1 // 10000000 // 10^7 corresponds to 1 second.
+#define SAMPLE_COUNT 10000000 //10
 
 // Forward function definitions.
 DWORD InitializeWindow(LPVOID lpThreadParameter);
@@ -75,13 +75,10 @@ int main()
   IDirect3DDeviceManager9* pD3DManager = NULL;
   IMFVideoSampleAllocator* pVideoSampleAllocator = NULL;
   IMFSample* pD3DVideoSample = NULL;
+  IMFMediaBuffer* pDstBuffer = NULL;
+  IMF2DBuffer* p2DBuffer = NULL;
   RECT rc = { 0, 0, BITMAP_WIDTH, BITMAP_HEIGHT };
   BOOL fSelected = false;
-
-  IUnknown* colorConvTransformUnk = NULL;
-  IMFTransform* pColorConvTransform = NULL; // This is colour converter MFT is used to convert between RGB32 and RGB24.
-  IMFMediaType* pDecInputMediaType = NULL, * pDecOutputMediaType = NULL;
-  IMFMediaType* pVideoSourceOutType = NULL;
 
   CHECK_HR(CoInitializeEx(NULL, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE),
     "COM initialisation failed.");
@@ -180,6 +177,8 @@ int main()
   CHECK_HR(pVideoSampleAllocator->SetDirectXManager(pD3DManager), "Failed to set D3DManager on video sample allocator.");
   CHECK_HR(pVideoSampleAllocator->InitializeSampleAllocator(1, pVideoOutType), "Failed to initialise video sample allocator.");
   CHECK_HR(pVideoSampleAllocator->AllocateSample(&pD3DVideoSample), "Failed to allocate video sample.");
+  CHECK_HR(pD3DVideoSample->GetBufferByIndex(0, &pDstBuffer), "Failed to get destination buffer.");
+  CHECK_HR(pDstBuffer->QueryInterface(IID_PPV_ARGS(&p2DBuffer)), "Failed to get pointer to 2D buffer.");
 
   // Get clocks organised.
   CHECK_HR(MFCreatePresentationClock(&pClock), "Failed to create presentation clock.");
@@ -189,8 +188,6 @@ int main()
   CHECK_HR(pClock->Start(0), "Error starting presentation clock.");
 
   // Start writing bitmaps.
-  IMFMediaBuffer* pDstBuffer = NULL;
-  IMF2DBuffer* p2DBuffer = NULL;
   BYTE* bitmapBuffer = new BYTE[4 * BITMAP_WIDTH * BITMAP_HEIGHT]; // RGB32
   DWORD bitmapBufferLength = 4 * BITMAP_WIDTH * BITMAP_HEIGHT;
   LONGLONG llTimeStamp = 0;
@@ -220,13 +217,11 @@ int main()
 
     CHECK_HR(pD3DVideoSample->SetSampleTime(llTimeStamp), "Failed to set D3D video sample time.");
     CHECK_HR(pD3DVideoSample->SetSampleDuration(sampleDuration), "Failed to set D3D video sample duration.");
-    CHECK_HR(pD3DVideoSample->GetBufferByIndex(0, &pDstBuffer), "Failed to get destination buffer.");
-    CHECK_HR(pDstBuffer->QueryInterface(IID_PPV_ARGS(&p2DBuffer)), "Failed to get pointer to 2D buffer.");
     CHECK_HR(p2DBuffer->ContiguousCopyFrom(bitmapBuffer, bitmapBufferLength), "Failed to copy bitmap to D2D buffer.");
 
-    CHECK_HR(pStreamSink->ProcessSample(pD3DVideoSample), "Streamsink process sample failed.");
+    CHECK_HR(pStreamSink->ProcessSample(pD3DVideoSample), "Stream sink process sample failed.");
 
-    Sleep(SAMPLE_DURATION / 10000);
+    //Sleep(SAMPLE_DURATION / 10000);
 
     bitmapCount++;
     llTimeStamp += sampleDuration;

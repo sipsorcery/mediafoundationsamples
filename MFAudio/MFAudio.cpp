@@ -3,9 +3,9 @@
 *
 * Description:
 * This file contains a C++ console application that plays the audio stream from
-* a sample file using the Windows Media Foundation API. Specifically it's
-* attempting to use the Streaming Audio Renderer
-* (https://msdn.microsoft.com/en-us/library/windows/desktop/aa369729%28v=vs.85%29.aspx).
+* a sample file using the Windows Media Foundation API and the Streaming 
+* Audio Renderer:
+* https://msdn.microsoft.com/en-us/library/windows/desktop/aa369729%28v=vs.85%29.aspx.
 *
 * Author:
 * Aaron Clauson (aaron@sipsorcery.com)

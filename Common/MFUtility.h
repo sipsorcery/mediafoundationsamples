@@ -2,8 +2,8 @@
 * Filename: MFUtility.h
 *
 * Description:
-* This header file contains common macros and functions that are used in the Media Foundation
-* sample applications.
+* This header file contains common macros and functions that are used in the 
+* Media Foundation sample applications.
 *
 * Author:
 * Aaron Clauson (aaron@sipsorcery.com)
@@ -666,6 +666,81 @@ done:
 }
 
 /**
+* Gets an audio or video source reader from a capture device such as a webcam or microphone.
+* @param[in] deviceType: the type of capture device to get a source reader for.
+* @param[in] nDevice: the capture device index to attempt to get the source reader for.
+* @param[out] ppMediaSource: will be set with the source for the reader if successful.
+* @param[out] ppVMediaReader: will be set with the reader if successful.
+* @@Returns S_OK if successful or an error code if not.
+*/
+HRESULT GetSourceFromCaptureDevice(DeviceType deviceType, UINT nDevice, IMFMediaSource** ppMediaSource, IMFSourceReader** ppMediaReader)
+{
+  UINT32 captureDeviceCount = 0;
+  IMFAttributes* pDeviceConfig = NULL;
+  IMFActivate** ppCaptureDevices = NULL;
+  WCHAR* deviceFriendlyName;
+  UINT nameLength = 0;
+  IMFAttributes* pAttributes = NULL;
+
+  HRESULT hr = S_OK;
+
+  hr = MFCreateAttributes(&pDeviceConfig, 1);
+  CHECK_HR(hr, "Error creating capture device configuration.");
+
+  GUID captureType = (deviceType == DeviceType::Audio) ?
+    MF_DEVSOURCE_ATTRIBUTE_SOURCE_TYPE_AUDCAP_GUID :
+    MF_DEVSOURCE_ATTRIBUTE_SOURCE_TYPE_VIDCAP_GUID;
+
+  // Request video capture devices.
+  hr = pDeviceConfig->SetGUID(
+    MF_DEVSOURCE_ATTRIBUTE_SOURCE_TYPE,
+    captureType);
+  CHECK_HR(hr, "Error initialising capture device configuration object.");
+
+  hr = MFEnumDeviceSources(pDeviceConfig, &ppCaptureDevices, &captureDeviceCount);
+  CHECK_HR(hr, "Error enumerating capture devices.");
+
+  if (nDevice >= captureDeviceCount) {
+    printf("The device index of %d was invalid for available device count of %d.\n", nDevice, captureDeviceCount);
+    hr = E_INVALIDARG;
+  }
+  else {
+    hr = ppCaptureDevices[nDevice]->GetAllocatedString(MF_DEVSOURCE_ATTRIBUTE_FRIENDLY_NAME, &deviceFriendlyName, &nameLength);
+    CHECK_HR(hr, "Error retrieving video device friendly name.\n");
+
+    wprintf(L"Capture device friendly name: %s\n", deviceFriendlyName);
+
+    hr = ppCaptureDevices[nDevice]->ActivateObject(IID_PPV_ARGS(ppMediaSource));
+    CHECK_HR(hr, "Error activating capture device.");
+
+    CHECK_HR(MFCreateAttributes(&pAttributes, 1),
+      "Failed to create attributes.");
+
+    if (deviceType == DeviceType::Video) {
+      // Adding this attribute creates a video source reader that will handle
+      // colour conversion and avoid the need to manually convert between RGB24 and RGB32 etc.
+      CHECK_HR(pAttributes->SetUINT32(MF_SOURCE_READER_ENABLE_VIDEO_PROCESSING, 1),
+        "Failed to set enable video processing attribute.");
+    }
+
+    // Create a source reader.
+    hr = MFCreateSourceReaderFromMediaSource(
+      *ppMediaSource,
+      pAttributes,
+      ppMediaReader);
+    CHECK_HR(hr, "Error creating media source reader.");
+  }
+
+done:
+
+  SAFE_RELEASE(pDeviceConfig);
+  SAFE_RELEASE(ppCaptureDevices);
+  SAFE_RELEASE(pAttributes);
+
+  return hr;
+}
+
+/**
 * Copies a media type attribute from an input media type to an output media type. Useful when setting
 * up the video sink and where a number of the video sink input attributes need to be duplicated on the
 * video writer attributes.
@@ -797,47 +872,6 @@ HRESULT GetDefaultStride(IMFMediaType* pType, LONG* plStride)
   if (SUCCEEDED(hr))
   {
     *plStride = lStride;
-  }
-
-done:
-  return hr;
-}
-
-/**
-* Status: This method is an attempt to match media types. This method is still
-* a work in progress. Not exactly sure how this should work (AC Jan 2020).
-* Iterates the sink media's available type in an attempt to find
-* one it is happy with.
-* @param[in] SinkMediaTypeHandler: the sink media handler to find a matching media type for.
-* @param[out] ppMediaType: will be set with a media type if successful.
-* @@Returns S_OK if successful or an error code if not.
-*/
-HRESULT GetSupportedMediaType(IMFMediaTypeHandler* pSinkMediaTypeHandler, IMFMediaType** ppMediaType)
-{
-  IMFMediaType* pSupportedType = NULL;
-  DWORD sourceMediaTypeCount = 0;
-  HRESULT hr = S_OK;
-
-  hr = pSinkMediaTypeHandler->GetMediaTypeCount(&sourceMediaTypeCount);
-  CHECK_HR(hr, "Error getting sink media type count.");
-
-  // Find a media type that the sink and its writer support.
-  for (UINT i = 0; i < sourceMediaTypeCount; i++)
-  {
-    hr = pSinkMediaTypeHandler->GetMediaTypeByIndex(i, &pSupportedType);
-    CHECK_HR(hr, "Error getting media type from sink media type handler.");
-
-    std::cout << GetMediaTypeDescription(pSupportedType) << std::endl;
-
-    if (pSinkMediaTypeHandler->IsMediaTypeSupported(pSupportedType, NULL) == S_OK) {
-      std::cout << "Matching media type found." << std::endl;
-      ppMediaType = &pSupportedType;
-      break;
-    }
-    else {
-      std::cout << "Source media type does not match." << std::endl;
-      SAFE_RELEASE(pSupportedType);
-    }
   }
 
 done:
