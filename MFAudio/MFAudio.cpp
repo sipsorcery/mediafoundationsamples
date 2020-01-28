@@ -11,8 +11,8 @@
 * Aaron Clauson (aaron@sipsorcery.com)
 *
 * History:
-* 01 Jan 2015	  Aaron Clauson	  Created, Hobart, Australia.
-* 03 Jan 2019   Aaron Clauson   Revisited to get sample working.
+* 01 Jan 2015	Aaron Clauson	  Created, Hobart, Australia.
+* 03 Jan 2019 Aaron Clauson   Revisited to get sample working.
 *
 * License: Public Domain (no warranty, use at own risk)
 /******************************************************************************/
@@ -26,21 +26,15 @@
 #include <mfreadwrite.h>
 #include <mmdeviceapi.h>
 #include <mferror.h>
-#include <Functiondiscoverykeys_devpkey.h>
 
 #pragma comment(lib, "mf.lib")
 #pragma comment(lib, "mfplat.lib")
 #pragma comment(lib, "mfplay.lib")
 #pragma comment(lib, "mfreadwrite.lib")
 #pragma comment(lib, "mfuuid.lib")
-#pragma comment(lib, "wmcodecdspuuid")
 
 #define MEDIA_FILE_PATH L"../MediaFiles/Macroform_-_Simplicity.mp3"
 #define AUDIO_DEVICE_INDEX 0 // Select the first audio rendering device returned by the system.
-
-// Forward function definitions.
-HRESULT GetAudioDevice(UINT nDevice, IMFMediaSink** pSink);
-HRESULT ListAudioOutputDevices();
 
 int main()
 {
@@ -78,7 +72,7 @@ int main()
   std::cout << GetMediaTypeDescription(pFileAudioMediaType) << std::endl;
 
   // Sink.
-  CHECK_HR(GetAudioDevice(AUDIO_DEVICE_INDEX, &pAudioSink),
+  CHECK_HR(GetAudioOutputDevice(AUDIO_DEVICE_INDEX, &pAudioSink),
     "Failed to get audio renderer device.");
 
   CHECK_HR(pAudioSink->GetStreamSinkByIndex(0, &pStreamSink),
@@ -197,146 +191,4 @@ done:
   SAFE_RELEASE(pSinkWriter);
 
   return 0;
-}
-
-/**
-* Attempts to get an audio output device sink.
-* @param[in] nDevice: the audio device index to attempt to get the sink for.
-* @param[out] pSink: the audio device sink.
-* @@Returns S_OK if successful or an error code if not.
-*/
-HRESULT GetAudioDevice(UINT nDevice, IMFMediaSink** pSink)
-{
-  HRESULT hr = S_OK;
-
-  IMMDeviceEnumerator* pEnum = NULL;      // Audio device enumerator.
-  IMMDeviceCollection* pDevices = NULL;   // Audio device collection.
-  IMMDevice* pDevice = NULL;              // An audio device.
-  IMFAttributes* pAttributes = NULL;      // Attribute store.
-
-  LPWSTR wstrID = NULL;                   // Device ID.
-
-  // Create the device enumerator.
-  hr = CoCreateInstance(
-    __uuidof(MMDeviceEnumerator),
-    NULL,
-    CLSCTX_ALL,
-    __uuidof(IMMDeviceEnumerator),
-    (void**)&pEnum
-  );
-
-  // Enumerate the rendering devices.
-  if (SUCCEEDED(hr))
-  {
-    hr = pEnum->EnumAudioEndpoints(eRender, DEVICE_STATE_ACTIVE, &pDevices);
-  }
-
-  // Get ID of the first device in the list.
-  if (SUCCEEDED(hr))
-  {
-    hr = pDevices->Item(nDevice, &pDevice);
-  }
-
-  if (SUCCEEDED(hr))
-  {
-    hr = pDevice->GetId(&wstrID);
-  }
-
-  // Create an attribute store and set the device ID attribute.
-  if (SUCCEEDED(hr))
-  {
-    hr = MFCreateAttributes(&pAttributes, 1);
-  }
-
-  if (SUCCEEDED(hr))
-  {
-    hr = pAttributes->SetString(
-      MF_AUDIO_RENDERER_ATTRIBUTE_ENDPOINT_ID,
-      wstrID
-    );
-  }
-
-  // Create the audio renderer.
-  if (SUCCEEDED(hr))
-  {
-    hr = MFCreateAudioRenderer(pAttributes, pSink);
-  }
-
-  wprintf(L"Selected audio device ID %s.\n", wstrID);
-
-  SAFE_RELEASE(pEnum);
-  SAFE_RELEASE(pDevices);
-  SAFE_RELEASE(pDevice);
-  SAFE_RELEASE(pAttributes);
-  CoTaskMemFree(wstrID);
-
-  return hr;
-}
-
-/**
-* Prints out a list of the audio output (rendering) devices available.
-* @@Returns S_OK if successful or an error code if not.
-*
-* Remarks:
-* See https://docs.microsoft.com/en-us/windows/win32/coreaudio/device-properties.
-*/
-HRESULT ListAudioOutputDevices()
-{
-  IMMDeviceEnumerator* pEnum = NULL;      // Audio device enumerator.
-  IMMDeviceCollection* pDevices = NULL;   // Audio device collection.
-  IMMDevice* pAudioDev = NULL;
-  IPropertyStore* pProps = NULL;
-
-  LPWSTR pwstrID = NULL;                   // Device ID.
-  UINT audioDeviceCount = 0;
-
-  HRESULT hr = S_OK;
-
-  // Create the device enumerator.
-  hr = CoCreateInstance(
-    __uuidof(MMDeviceEnumerator),
-    NULL,
-    CLSCTX_ALL,
-    __uuidof(IMMDeviceEnumerator),
-    (void**)&pEnum);
-  CHECK_HR(hr, "Failed to create device enumerator.");
-
-  // Enumerate the rendering devices.
-  hr = pEnum->EnumAudioEndpoints(eRender, DEVICE_STATE_ACTIVE, &pDevices);
-  CHECK_HR(hr, "Failed to enumerate audio endpoints.");
-
-  hr = pDevices->GetCount(&audioDeviceCount);
-  CHECK_HR(hr, "Failed to get the audio device count.");
-
-  wprintf(L"Audio device count %d.\n", audioDeviceCount);
-
-  for (UINT i = 0; i < audioDeviceCount; i++) {
-    hr = pDevices->Item(i, &pAudioDev);
-    CHECK_HR(hr, "Failed to get audio device pointer.");
-
-    hr = pAudioDev->OpenPropertyStore(STGM_READ, &pProps);
-    CHECK_HR(hr,"Failed to open audio device property store.");
-
-    hr = pAudioDev->GetId(&pwstrID);
-    CHECK_HR(hr, "Failed to get audio device ID.");
-
-    PROPVARIANT varName;
-    PropVariantInit(&varName);
-
-    hr = pProps->GetValue(PKEY_Device_FriendlyName, &varName);
-    CHECK_HR(hr, "Failed to get audio device friendly name");
-
-    // Print endpoint friendly name and endpoint ID.
-    printf("Endpoint %d: \"%S\" (%S)\n", i, varName.pwszVal, pwstrID);
-  }
-
-done:
-
-  SAFE_RELEASE(pEnum);
-  SAFE_RELEASE(pDevices);
-  SAFE_RELEASE(pAudioDev);
-  SAFE_RELEASE(pProps);
-  CoTaskMemFree(pwstrID);
-
-  return hr;
 }

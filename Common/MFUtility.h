@@ -421,7 +421,7 @@ HRESULT ListMediaTypes(IMFMediaTypeHandler* pMediaTypeHandler)
     hr = pMediaTypeHandler->GetMediaTypeByIndex(i, &pMediaType);
     CHECK_HR(hr, "Failed to get media type.");
 
-    std::cout << "Media type " << i << " :" << std::endl;
+    std::cout << "Media type " << i << ": " << std::endl;
     std::cout << GetMediaTypeDescription(pMediaType) << std::endl;
 
     SAFE_RELEASE(pMediaType);

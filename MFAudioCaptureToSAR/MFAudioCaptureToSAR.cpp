@@ -3,12 +3,9 @@
 *
 * Description:
 * This file contains a C++ console application that is attempting to play the
-* audio from a capture device using the Windows Media Foundation
-* API. Playback is done using the Streaming Audio Renderer:
+* audio from a capture device using the Windows Media Foundation API. 
+* Playback is done using the Streaming Audio Renderer:
 * https://msdn.microsoft.com/en-us/library/windows/desktop/aa369729%28v=vs.85%29.aspx
-*
-* Status:
-* Not working. No audio played on output device.
 *
 * Author:
 * Aaron Clauson (aaron@sipsorcery.com)
@@ -42,11 +39,9 @@
 #pragma comment(lib, "mfplay.lib")
 #pragma comment(lib, "mfreadwrite.lib")
 #pragma comment(lib, "mfuuid.lib")
-#pragma comment(lib, "Strmiids")
 
-#define AUDIO_CAPTURE_DEVICE_INDEX 0	  // Adjust according to desired video capture device.
-#define AUDIO_OUTPUT_DEVICE_INDEX 0
-#define SPEAKER_OUPUT_MASK SPEAKER_FRONT_LEFT | SPEAKER_FRONT_RIGHT
+#define AUDIO_CAPTURE_DEVICE_INDEX 0	    // Adjust according to desired audio capture device.
+#define AUDIO_OUTPUT_DEVICE_INDEX 0       // Adjust according to desired audio output device.
 
 int main()
 {
@@ -55,13 +50,11 @@ int main()
   IMFMediaSink* pAudioSink = NULL;
   IMFStreamSink* pStreamSink = NULL;
   IMFSinkWriter* pAudioSinkWriter = NULL;
-  IMFAttributes* pAudioSinkAttributes = NULL;
-  IMFMediaTypeHandler* pSinkMediaTypeHandler = NULL, * pSourceMediaTypeHandler = NULL;
-  IMFMediaType* pAudioSourceOutputType = NULL, *pAudioSinkInputType = NULL;
-  IMFPresentationDescriptor* pSourcePresentationDescriptor = NULL;
-  IMFStreamDescriptor* pSourceStreamDescriptor = NULL;
+  IMFMediaTypeHandler* pSinkMediaTypeHandler = NULL;
+  IMFMediaType* pSinkSupportedType = NULL;
   BOOL fSelected = false;
-  
+  DWORD sourceStreamCount = 0, sinkStreamCount = 0, sinkStreamIndex = 0, sinkMediaTypeCount = 0;
+
   CHECK_HR(CoInitializeEx(NULL, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE),
     "COM initialisation failed.");
 
@@ -74,10 +67,15 @@ int main()
   //CHECK_HR(ListCaptureDevices(DeviceType::Audio),
   //  "Error listing audio capture devices.");
 
-  // ----- Set up Audio sink (Streaming Audio Renderer). -----
+  // ----- Set up audio capture (microphone) source. -----
 
-  //CHECK_HR(MFCreateAudioRenderer(NULL, &pAudioSink),
-  // "Failed to create streaming audio sink.");
+  CHECK_HR(GetSourceFromCaptureDevice(DeviceType::Audio, AUDIO_CAPTURE_DEVICE_INDEX, &pAudioSource, &pAudioReader),
+    "Failed to get microphone source reader.");
+
+  CHECK_HR(pAudioReader->SetStreamSelection((DWORD)MF_SOURCE_READER_FIRST_AUDIO_STREAM, TRUE),
+    "Failed to set the first audio stream on the source reader.");
+
+  // ----- Set up Audio sink (Streaming Audio Renderer). -----
 
   CHECK_HR(GetAudioOutputDevice(AUDIO_OUTPUT_DEVICE_INDEX, &pAudioSink),
     "Failed to create streaming audio sink.");
@@ -88,102 +86,94 @@ int main()
   CHECK_HR(pStreamSink->GetMediaTypeHandler(&pSinkMediaTypeHandler),
     "Failed to get media type handler for stream sink.");
 
-  //CHECK_HR(ListMediaTypes(pSinkMediaTypeHandler),
-   // "Failed to list sink media types.");
+  CHECK_HR(pSinkMediaTypeHandler->GetMediaTypeCount(&sinkMediaTypeCount),
+    "Error getting sink media type count.");
 
-  CHECK_HR(MFCreateSinkWriterFromMediaSink(pAudioSink, NULL, &pAudioSinkWriter),
-    "Failed to create sink writer from audio sink.");
+  std::cout << "Sink media type count " << sinkMediaTypeCount << "." << std::endl;
 
-  // ----- Set up audio capture (microphone) source. -----
+  // ----- Wire up the source and sink. -----
 
-  CHECK_HR(GetSourceFromCaptureDevice(DeviceType::Audio, AUDIO_CAPTURE_DEVICE_INDEX, &pAudioSource, &pAudioReader),
-    "Failed to get microphone source. reader");
-
-  CHECK_HR(pAudioReader->GetCurrentMediaType((DWORD)MF_SOURCE_READER_FIRST_AUDIO_STREAM, &pAudioSourceOutputType),
-    "Error retrieving current media type from first audio stream.");
-
-  CHECK_HR(pAudioReader->SetStreamSelection((DWORD)MF_SOURCE_READER_FIRST_AUDIO_STREAM, TRUE),
-    "Failed to set the first audio stream on the source reader.");
-
-  CHECK_HR(pAudioSource->CreatePresentationDescriptor(&pSourcePresentationDescriptor),
-    "Failed to create the presentation descriptor from the media source.");
-
-  CHECK_HR(pSourcePresentationDescriptor->GetStreamDescriptorByIndex(0, &fSelected, &pSourceStreamDescriptor),
-    "Failed to get source stream descriptor from presentation descriptor.");
-
-  CHECK_HR(pSourceStreamDescriptor->GetMediaTypeHandler(&pSourceMediaTypeHandler),
-    "Failed to get source media type handler.");
-
-  DWORD srcMediaTypeCount = 0;
-  CHECK_HR(pSourceMediaTypeHandler->GetMediaTypeCount(&srcMediaTypeCount),
-    "Failed to get source media type count.");
-
-  std::cout << "Source media type count: " << srcMediaTypeCount << ", is first stream selected " << fSelected << "." << std::endl;
-  std::cout << "Default output media type for source reader:" << std::endl;
-  std::cout << GetMediaTypeDescription(pAudioSourceOutputType) << std::endl << std::endl;
-
-  // ----- Create a compatible media type and set on the source and sink. -----
-
-  // Set the audio input type on the SAR sink.
-  CHECK_HR(MFCreateMediaType(&pAudioSinkInputType), "Failed to create audio sink media type.");
-  CHECK_HR(pAudioSourceOutputType->CopyAllItems(pAudioSinkInputType), "Failed to copy media type attributes to sink input type.");
-  CHECK_HR(pAudioSinkInputType->SetUINT32(MF_MT_AUDIO_CHANNEL_MASK, SPEAKER_OUPUT_MASK), "Failed to set audio channel mask on sink input type.");
-
-  CHECK_HR(pSinkMediaTypeHandler->SetCurrentMediaType(pAudioSinkInputType),
-    "Failed to set output media type on sink.");
-
-  std::cout << "Audio sink input media type defined as:" << std::endl;
-  std::cout << GetMediaTypeDescription(pAudioSinkInputType) << std::endl << std::endl;
-
-  CHECK_HR(pAudioSinkWriter->BeginWriting(),
-    "Failed to being writing on audio sink writer.");
-
-  // ----- Source and sink now configured. Set up remaining infrastructure and then start sampling. -----
-
-  // Start the sample read-write loop.
-  IMFSample* pAudioSample = NULL;
-  DWORD streamIndex, flags;
-  LONGLONG llTimeStamp;
-
-  while (true)
+  // Find a media type that the stream sink supports.
+  for (UINT i = 0; i < sinkMediaTypeCount; i++)
   {
-    CHECK_HR(pAudioReader->ReadSample(
-      MF_SOURCE_READER_FIRST_AUDIO_STREAM,
-      0,                              // Flags.
-      &streamIndex,                   // Receives the actual stream index. 
-      &flags,                         // Receives status flags.
-      &llTimeStamp,                   // Receives the time stamp.
-      &pAudioSample                   // Receives the sample or NULL.
-    ), "Error reading audio sample.");
+    CHECK_HR(pSinkMediaTypeHandler->GetMediaTypeByIndex(i, &pSinkSupportedType),
+      "Error getting media type from sink media type handler.");
 
-    if (flags & MF_SOURCE_READERF_ENDOFSTREAM)
+    if (pSinkMediaTypeHandler->IsMediaTypeSupported(pSinkSupportedType, NULL) == S_OK)
     {
-      printf("End of stream.\n");
+      std::cout << "Matching media type found." << std::endl;
+      std::cout << GetMediaTypeDescription(pSinkSupportedType) << std::endl;
       break;
     }
-    if (flags & MF_SOURCE_READERF_STREAMTICK)
-    {
-      printf("Stream tick.\n");
+    else {
+      std::cout << "Sink and source media type incompatible." << std::endl;
+      //std::cout << GetMediaTypeDescription(pSinkSupportedType) << std::endl;
+      SAFE_RELEASE(pSinkSupportedType);
     }
+  }
 
-    if (!pAudioSample)
+  if (pSinkSupportedType != NULL) {
+
+      // Set the supported type on the reader.
+    CHECK_HR(pAudioReader->SetCurrentMediaType(0, NULL, pSinkSupportedType),
+      "Failed to set media type on reader.");
+
+    CHECK_HR(MFCreateSinkWriterFromMediaSink(pAudioSink, NULL, &pAudioSinkWriter),
+      "Failed to create sink writer from audio sink.");
+
+    CHECK_HR(pAudioSinkWriter->SetInputMediaType(0, pSinkSupportedType, NULL),
+      "Error setting sink media type.");
+
+    CHECK_HR(pAudioSinkWriter->BeginWriting(),
+      "Failed to being writing on audio sink writer.");
+
+    // ----- Source and sink now configured. Set up remaining infrastructure and then start sampling. -----
+
+    // Start the sample read-write loop.
+    IMFSample* pAudioSample = NULL;
+    DWORD streamIndex, flags;
+    LONGLONG llTimeStamp;
+
+    while (true)
     {
-      printf("Null audio sample.\n");
+      CHECK_HR(pAudioReader->ReadSample(
+        MF_SOURCE_READER_FIRST_AUDIO_STREAM,
+        0,                              // Flags.
+        &streamIndex,                   // Receives the actual stream index. 
+        &flags,                         // Receives status flags.
+        &llTimeStamp,                   // Receives the time stamp.
+        &pAudioSample                   // Receives the sample or NULL.
+      ), "Error reading audio sample.");
+
+      if (flags & MF_SOURCE_READERF_ENDOFSTREAM)
+      {
+        printf("End of stream.\n");
+        break;
+      }
+      if (flags & MF_SOURCE_READERF_STREAMTICK)
+      {
+        printf("Stream tick.\n");
+        CHECK_HR(pAudioSinkWriter->SendStreamTick(0, llTimeStamp), "Error sending stream tick.");
+      }
+
+      if (!pAudioSample)
+      {
+        printf("Null audio sample.\n");
+      }
+      else
+      {
+        LONGLONG sampleDuration = 0;
+
+        CHECK_HR(pAudioSample->SetSampleTime(llTimeStamp), "Error setting the audio sample time.");
+        CHECK_HR(pAudioSample->GetSampleDuration(&sampleDuration), "Failed to get audio sample duration.");
+
+        printf("Audio sample, duration %llu, sample time %llu.\n", sampleDuration, llTimeStamp);
+
+        CHECK_HR(pAudioSinkWriter->WriteSample(0, pAudioSample), "Sink writer write sample failed.");
+      }
+
+      SAFE_RELEASE(pAudioSample);
     }
-    else
-    {
-      LONGLONG sampleDuration = 0;
-
-      CHECK_HR(pAudioSample->SetSampleTime(llTimeStamp), "Error setting the audio sample time.");
-      CHECK_HR(pAudioSample->GetSampleDuration(&sampleDuration), "Failed to get audio sample duration.");
-
-      printf("Audio sample, duration %llu, sample time %llu.\n", sampleDuration, llTimeStamp);
-
-      //CHECK_HR(pStreamSink->ProcessSample(pAudioSample), "Stream sink process sample failed.");
-      CHECK_HR(pAudioSinkWriter->WriteSample(0, pAudioSample), "Sink writer write sample failed.");
-    }
-
-    SAFE_RELEASE(pAudioSample);
   }
 
 done:
@@ -191,14 +181,13 @@ done:
   printf("finished.\n");
   auto c = getchar();
 
+  SAFE_RELEASE(pAudioSource);
+  SAFE_RELEASE(pAudioReader);
+  SAFE_RELEASE(pAudioSink);
+  SAFE_RELEASE(pSinkSupportedType);
   SAFE_RELEASE(pStreamSink);
   SAFE_RELEASE(pAudioSinkWriter);
   SAFE_RELEASE(pSinkMediaTypeHandler);
-  SAFE_RELEASE(pSourceMediaTypeHandler);
-  SAFE_RELEASE(pSourcePresentationDescriptor);
-  SAFE_RELEASE(pSourceStreamDescriptor);
-  SAFE_RELEASE(pAudioSourceOutputType);
-  SAFE_RELEASE(pAudioSinkInputType);
 
   return 0;
 }
