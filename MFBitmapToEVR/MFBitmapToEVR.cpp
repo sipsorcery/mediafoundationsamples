@@ -81,6 +81,9 @@ int main()
   BOOL fSelected = false;
   BYTE* bitmapBuffer = new BYTE[4 * BITMAP_WIDTH * BITMAP_HEIGHT]; // RGB32
 
+  IMFMediaEventGenerator* pEventGenerator = NULL;
+  MediaEventHandler mediaEvtHandler;
+
   CHECK_HR(CoInitializeEx(NULL, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE),
     "COM initialisation failed.");
 
@@ -170,6 +173,14 @@ int main()
 
   CHECK_HR(pSinkMediaTypeHandler->SetCurrentMediaType(pVideoOutType),
     "Failed to set input media type on EVR sink.");
+
+  // ----- Set up event handler for sink events otherwise memory leaks. -----
+
+  CHECK_HR(pVideoSink->QueryInterface(IID_IMFMediaEventGenerator, (void**)&pEventGenerator),
+    "Video sink doesn't support IMFMediaEventGenerator interface.");
+
+  CHECK_HR(pEventGenerator->BeginGetEvent((IMFAsyncCallback*)&mediaEvtHandler, pEventGenerator),
+    "BeginGetEvent on media generator failed.");
   
   // Get Direct3D surface organised.
   // https://msdn.microsoft.com/fr-fr/library/windows/desktop/aa473823(v=vs.85).aspx

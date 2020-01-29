@@ -93,6 +93,9 @@ int main()
   IMFMediaType* pDecInputMediaType = NULL, * pDecOutputMediaType = NULL;
   IMFMediaType* pVideoSourceOutType = NULL;
 
+  IMFMediaEventGenerator* pEventGenerator = NULL;
+  MediaEventHandler mediaEvtHandler;
+
   CHECK_HR(CoInitializeEx(NULL, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE),
     "COM initialisation failed.");
 
@@ -212,6 +215,14 @@ int main()
   std::cout << "EVR input media type defined as:" << std::endl;
   std::cout << GetMediaTypeDescription(pImfEvrSinkType) << std::endl << std::endl;
 
+  // ----- Set up event handler for sink events otherwise memory leaks. -----
+
+  CHECK_HR(pVideoSink->QueryInterface(IID_IMFMediaEventGenerator, (void**)&pEventGenerator),
+    "Video sink doesn't support IMFMediaEventGenerator interface.");
+
+  CHECK_HR(pEventGenerator->BeginGetEvent((IMFAsyncCallback*)&mediaEvtHandler, pEventGenerator),
+    "BeginGetEvent on media generator failed.");
+
   // ----- Source and sink now configured. Set up remaining infrastructure and then start sampling. -----
 
   // Get Direct3D surface organised.
@@ -327,6 +338,7 @@ done:
   SAFE_RELEASE(pD3DManager);
   SAFE_RELEASE(pVideoSampleAllocator);
   SAFE_RELEASE(pD3DVideoSample);
+  SAFE_RELEASE(pEventGenerator);
 
   return 0;
 }
