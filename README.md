@@ -10,11 +10,11 @@ A set of minimal sample applications that demonstrate how to use certain parts o
  
  - MFAudioCaptureToSAR - Capture on default audio capture device (microphone) and playback on default audio output device (speaker).
  
- - MFTopology - Plays audio and video from an mp4 file using the Enhanced Video Renderer and Streaming Audio Renderer.
- 
+ - MFBitmapMftToEVR - Performs a colour conversion on a bitmap byte array and then displays on the Enhanced Video Renderer. 
+
  - MFBitmapToEVR - Displays a byte array representing a bitmap on the Enhanced Video Renderer.
  
- - MFBitmapMFTToEVR - Performs a colour conversion on a bitmap byte array and then displays on the Enhanced Video Renderer. 
+ - MFTopology - Plays audio and video from an mp4 file using the Enhanced Video Renderer and Streaming Audio Renderer.
  
  - MFVideoEVR - Display video from an mp4 file in Window WITHOUT using a topology. Write samples to video renderer directly from buffer.
  
@@ -26,26 +26,26 @@ A set of minimal sample applications that demonstrate how to use certain parts o
  
 ### Plumbing
 
+ - MFCaptureRawFramesToFile - Captures 100 samples from default webcam to file.
+
  - MFListTransforms - Lists the available MFT Transforms to convert between two media types.
  
  - MFMP4ToYUVWithMFT - Reads H264 encoded video frames from an mp4 file and decodes them to a YUV pixel format and dumps them to an output file.
  
  - MFMP4ToYUVWithoutMFT - Same as the previous (MFMP4ToYUVWithMFT) sample but WITHOUT having to wire up the H264 decoder. Reads H264 encoded video frames from an mp4 file and decodes them to a YUV pixel format and dumps them to an output file.
  
- - MFCaptureRawFramesToFile - Captures 100 samples from default webcam to file.
- 
- - MFWebCamToFile - Captures 100 samples from default webcam to an mp4 file.
- 
  - MFSampleGrabber - Copy of the Sample Grabber Sink example from https://docs.microsoft.com/en-us/windows/win32/medfound/using-the-sample-grabber-sink but grabbing both audio and video samples from an mp4 file rather than solely audio samples.
 
+ - MFWebCamToFile - Captures 100 samples from default webcam to an mp4 file.
+ 
 ### Webcam -> H264 -> RTP
-
- - MFWebCamToH264Buffer - Captures the video stream from a webcam to an H264 byte array by directly using the MFT H264 Encoder.
 
  - MFH264RoundTrip - Captures video frames, H264 encode to byte array, decode to YUV (replicates encode, transmit, decode).
 
  - MFWebCamRtp - Stream webcam video over RTP to ffplay.
- 
+  
+ - MFWebCamToH264Buffer - Captures the video stream from a webcam to an H264 byte array by directly using the MFT H264 Encoder.
+
 ### Webcam -> H264/VP8 -> WebRTC -> Web Browser
  
  - MFWebCamWebRTC - Stream VP8 encoded webcam video to a WebRTC client (only works with Chrome).
