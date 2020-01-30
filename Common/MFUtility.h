@@ -1187,6 +1187,7 @@ public:
     if (SUCCEEDED(hr))
     {
       hr = pEvent->GetType(&meType);
+      //printf("Media event type %d.\n", meType);
     }
 
     // Get the event status. If the operation that triggered the event 

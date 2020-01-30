@@ -82,7 +82,9 @@ int main()
   BYTE* bitmapBuffer = new BYTE[4 * BITMAP_WIDTH * BITMAP_HEIGHT]; // RGB32
 
   IMFMediaEventGenerator* pEventGenerator = NULL;
+  IMFMediaEventGenerator* pstreamSinkEventGenerator = NULL;
   MediaEventHandler mediaEvtHandler;
+  MediaEventHandler streamSinkMediaEvtHandler;
 
   CHECK_HR(CoInitializeEx(NULL, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE),
     "COM initialisation failed.");
@@ -180,7 +182,13 @@ int main()
     "Video sink doesn't support IMFMediaEventGenerator interface.");
 
   CHECK_HR(pEventGenerator->BeginGetEvent((IMFAsyncCallback*)&mediaEvtHandler, pEventGenerator),
-    "BeginGetEvent on media generator failed.");
+    "BeginGetEvent on video sink media generator failed.");
+
+  CHECK_HR(pStreamSink->QueryInterface(IID_IMFMediaEventGenerator, (void**)&pstreamSinkEventGenerator),
+    "Stream sink doesn't support IMFMediaEventGenerator interface.");
+
+  CHECK_HR(pstreamSinkEventGenerator->BeginGetEvent((IMFAsyncCallback*)&streamSinkMediaEvtHandler, pstreamSinkEventGenerator),
+    "BeginGetEvent on stream sink media generator failed.");
   
   // Get Direct3D surface organised.
   // https://msdn.microsoft.com/fr-fr/library/windows/desktop/aa473823(v=vs.85).aspx
@@ -259,6 +267,8 @@ done:
   SAFE_RELEASE(pD3DManager);
   SAFE_RELEASE(pVideoSampleAllocator);
   SAFE_RELEASE(pD3DVideoSample);
+  SAFE_RELEASE(pEventGenerator);
+  SAFE_RELEASE(pstreamSinkEventGenerator);
 
   return 0;
 }

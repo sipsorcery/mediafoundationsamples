@@ -94,7 +94,9 @@ int main()
   IMFMediaType* pVideoSourceOutType = NULL;
 
   IMFMediaEventGenerator* pEventGenerator = NULL;
+  IMFMediaEventGenerator* pstreamSinkEventGenerator = NULL;
   MediaEventHandler mediaEvtHandler;
+  MediaEventHandler streamSinkMediaEvtHandler;
 
   CHECK_HR(CoInitializeEx(NULL, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE),
     "COM initialisation failed.");
@@ -223,6 +225,12 @@ int main()
   CHECK_HR(pEventGenerator->BeginGetEvent((IMFAsyncCallback*)&mediaEvtHandler, pEventGenerator),
     "BeginGetEvent on media generator failed.");
 
+  CHECK_HR(pStreamSink->QueryInterface(IID_IMFMediaEventGenerator, (void**)&pstreamSinkEventGenerator),
+    "Stream sink doesn't support IMFMediaEventGenerator interface.");
+
+  CHECK_HR(pstreamSinkEventGenerator->BeginGetEvent((IMFAsyncCallback*)&streamSinkMediaEvtHandler, pstreamSinkEventGenerator),
+    "BeginGetEvent on stream sink media generator failed.");
+
   // ----- Source and sink now configured. Set up remaining infrastructure and then start sampling. -----
 
   // Get Direct3D surface organised.
@@ -339,6 +347,7 @@ done:
   SAFE_RELEASE(pVideoSampleAllocator);
   SAFE_RELEASE(pD3DVideoSample);
   SAFE_RELEASE(pEventGenerator);
+  SAFE_RELEASE(pstreamSinkEventGenerator);
 
   return 0;
 }
