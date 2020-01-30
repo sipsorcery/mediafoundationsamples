@@ -667,7 +667,8 @@ done:
 * Gets a video source reader from a device such as a webcam.
 * @param[in] nDevice: the video device index to attempt to get the source reader for.
 * @param[out] ppVideoSource: will be set with the source for the reader if successful.
-* @param[out] ppVideoReader: will be set with the reader if successful.
+* @param[out] ppVideoReader: will be set with the reader if successful. Set this parameter
+*  to nullptr if no reader is required and only the source is needed.
 * @@Returns S_OK if successful or an error code if not.
 */
 HRESULT GetVideoSourceFromDevice(UINT nDevice, IMFMediaSource** ppVideoSource, IMFSourceReader** ppVideoReader)
@@ -710,17 +711,19 @@ HRESULT GetVideoSourceFromDevice(UINT nDevice, IMFMediaSource** ppVideoSource, I
     CHECK_HR(MFCreateAttributes(&pAttributes, 1),
       "Failed to create attributes.");
 
-    // Adding this attribute creates a video source reader that will handle
-    // colour conversion and avoid the need to manually convert between RGB24 and RGB32 etc.
-    CHECK_HR(pAttributes->SetUINT32(MF_SOURCE_READER_ENABLE_VIDEO_PROCESSING, 1),
-      "Failed to set enable video processing attribute.");
+    if (ppVideoReader != nullptr) {
+      // Adding this attribute creates a video source reader that will handle
+      // colour conversion and avoid the need to manually convert between RGB24 and RGB32 etc.
+      CHECK_HR(pAttributes->SetUINT32(MF_SOURCE_READER_ENABLE_VIDEO_PROCESSING, 1),
+        "Failed to set enable video processing attribute.");
 
-    // Create a source reader.
-    hr = MFCreateSourceReaderFromMediaSource(
-      *ppVideoSource,
-      pAttributes,
-      ppVideoReader);
-    CHECK_HR(hr, "Error creating video source reader.");
+      // Create a source reader.
+      hr = MFCreateSourceReaderFromMediaSource(
+        *ppVideoSource,
+        pAttributes,
+        ppVideoReader);
+      CHECK_HR(hr, "Error creating video source reader.");
+    }
   }
 
 done:
@@ -737,7 +740,8 @@ done:
 * @param[in] deviceType: the type of capture device to get a source reader for.
 * @param[in] nDevice: the capture device index to attempt to get the source reader for.
 * @param[out] ppMediaSource: will be set with the source for the reader if successful.
-* @param[out] ppVMediaReader: will be set with the reader if successful.
+* @param[out] ppVMediaReader: will be set with the reader if successful. Set this parameter
+*  to nullptr if no reader is required and only the source is needed.
 * @@Returns S_OK if successful or an error code if not.
 */
 HRESULT GetSourceFromCaptureDevice(DeviceType deviceType, UINT nDevice, IMFMediaSource** ppMediaSource, IMFSourceReader** ppMediaReader)
@@ -780,22 +784,25 @@ HRESULT GetSourceFromCaptureDevice(DeviceType deviceType, UINT nDevice, IMFMedia
     hr = ppCaptureDevices[nDevice]->ActivateObject(IID_PPV_ARGS(ppMediaSource));
     CHECK_HR(hr, "Error activating capture device.");
 
-    CHECK_HR(MFCreateAttributes(&pAttributes, 1),
-      "Failed to create attributes.");
+    // Is a reader required or does the caller only want the source?
+    if (ppMediaReader != nullptr) {
+      CHECK_HR(MFCreateAttributes(&pAttributes, 1),
+        "Failed to create attributes.");
 
-    if (deviceType == DeviceType::Video) {
-      // Adding this attribute creates a video source reader that will handle
-      // colour conversion and avoid the need to manually convert between RGB24 and RGB32 etc.
-      CHECK_HR(pAttributes->SetUINT32(MF_SOURCE_READER_ENABLE_VIDEO_PROCESSING, 1),
-        "Failed to set enable video processing attribute.");
+      if (deviceType == DeviceType::Video) {
+        // Adding this attribute creates a video source reader that will handle
+        // colour conversion and avoid the need to manually convert between RGB24 and RGB32 etc.
+        CHECK_HR(pAttributes->SetUINT32(MF_SOURCE_READER_ENABLE_VIDEO_PROCESSING, 1),
+          "Failed to set enable video processing attribute.");
+      }
+
+      // Create a source reader.
+      hr = MFCreateSourceReaderFromMediaSource(
+        *ppMediaSource,
+        pAttributes,
+        ppMediaReader);
+      CHECK_HR(hr, "Error creating media source reader.");
     }
-
-    // Create a source reader.
-    hr = MFCreateSourceReaderFromMediaSource(
-      *ppMediaSource,
-      pAttributes,
-      ppMediaReader);
-    CHECK_HR(hr, "Error creating media source reader.");
   }
 
 done:
