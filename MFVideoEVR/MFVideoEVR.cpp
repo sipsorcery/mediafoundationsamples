@@ -68,7 +68,7 @@ int main()
   IMFMediaSource* pVideoSource = NULL;
   IMFSourceReader* pVideoReader = NULL;
   IMFMediaType* videoSourceOutputType = NULL, * pvideoSourceModType = NULL;
-  IMFMediaType* pImfEvrSinkType = NULL;
+  IMFMediaType* pVideoSourceOutType = NULL, *pImfEvrSinkType = NULL;
   IMFMediaType* pHintMediaType = NULL;
   IMFMediaSink* pVideoSink = NULL;
   IMFStreamSink* pStreamSink = NULL;
@@ -84,15 +84,10 @@ int main()
   IDirect3DDeviceManager9* pD3DManager = NULL;
   IMFVideoSampleAllocator* pVideoSampleAllocator = NULL;
   IMFSample* pD3DVideoSample = NULL;
-  RECT rc = { 0, 0, VIDEO_WIDTH, VIDEO_HEIGHT };
-  BOOL fSelected = false;
   IMF2DBuffer* p2DBuffer = NULL;
   IMFMediaBuffer* pDstBuffer = NULL;
-
-  IUnknown* colorConvTransformUnk = NULL;
-  IMFTransform* pColorConvTransform = NULL; // This is colour converter MFT is used to convert between RGB32 and RGB24.
-  IMFMediaType* pDecInputMediaType = NULL, * pDecOutputMediaType = NULL;
-  IMFMediaType* pVideoSourceOutType = NULL;
+  RECT rc = { 0, 0, VIDEO_WIDTH, VIDEO_HEIGHT };
+  BOOL fSelected = false;
 
   IMFMediaEventGenerator* pEventGenerator = NULL;
   IMFMediaEventGenerator* pstreamSinkEventGenerator = NULL;
@@ -164,6 +159,9 @@ int main()
 
   CHECK_HR(GetVideoSourceFromFile(MEDIA_FILE_PATH, &pVideoSource, &pVideoReader),
     "Failed to get file video source.");
+
+  CHECK_HR(pVideoReader->SetStreamSelection(MF_SOURCE_READER_ALL_STREAMS, false),
+    "Failed to deselect all streams on video reader.");
 
   CHECK_HR(pVideoReader->GetCurrentMediaType((DWORD)MF_SOURCE_READER_FIRST_VIDEO_STREAM, &videoSourceOutputType),
     "Error retrieving current media type from first video stream.");
@@ -299,7 +297,7 @@ int main()
       CHECK_HR(videoSample->ConvertToContiguousBuffer(&pSrcBuffer), "Failed to get buffer from video sample.");
       CHECK_HR(pSrcBuffer->Lock(&pbBuffer, NULL, &dwBuffer), "Failed to lock sample buffer.");
       CHECK_HR(p2DBuffer->ContiguousCopyFrom(pbBuffer, dwBuffer), "Failed to unlock sample buffer.");
-      CHECK_HR(pSrcBuffer->Unlock(), ".\n");
+      CHECK_HR(pSrcBuffer->Unlock(), "Failed to unlock source buffer.\n");
 
       CHECK_HR(videoSample->GetUINT32(MFSampleExtension_FrameCorruption, &uiAttribute), "Failed to get frame corruption attribute.");
       CHECK_HR(pD3DVideoSample->SetUINT32(MFSampleExtension_FrameCorruption, uiAttribute), "Failed to set frame corruption attribute.");
@@ -308,9 +306,9 @@ int main()
       CHECK_HR(videoSample->GetUINT32(MFSampleExtension_CleanPoint, &uiAttribute), "Failed to get clean point attribute.");
       CHECK_HR(pD3DVideoSample->SetUINT32(MFSampleExtension_CleanPoint, uiAttribute), "Failed to set clean point attribute.");
 
-      CHECK_HR(pStreamSink->ProcessSample(pD3DVideoSample), "Streamsink process sample failed.");
+      CHECK_HR(pStreamSink->ProcessSample(pD3DVideoSample), "Stream sink process sample failed.");
 
-      Sleep(sampleDuration / 10000); // Duration is given in 10's of nano seconds.
+      Sleep(sampleDuration / 10000); // Duration is given in 100's of nano seconds.
     }
 
     SAFE_RELEASE(pSrcBuffer);
