@@ -72,7 +72,6 @@ int main()
   IMFMediaType* pHintMediaType = NULL;
   IMFMediaSink* pVideoSink = NULL;
   IMFStreamSink* pStreamSink = NULL;
-  IMFSinkWriter* pSinkWriter = NULL;
   IMFMediaTypeHandler* pSinkMediaTypeHandler = NULL, * pSourceMediaTypeHandler = NULL;
   IMFPresentationDescriptor* pSourcePresentationDescriptor = NULL;
   IMFStreamDescriptor* pSourceStreamDescriptor = NULL;
@@ -87,6 +86,8 @@ int main()
   IMFSample* pD3DVideoSample = NULL;
   RECT rc = { 0, 0, VIDEO_WIDTH, VIDEO_HEIGHT };
   BOOL fSelected = false;
+  IMF2DBuffer* p2DBuffer = NULL;
+  IMFMediaBuffer* pDstBuffer = NULL;
 
   IUnknown* colorConvTransformUnk = NULL;
   IMFTransform* pColorConvTransform = NULL; // This is colour converter MFT is used to convert between RGB32 and RGB24.
@@ -240,6 +241,8 @@ int main()
   CHECK_HR(pVideoSampleAllocator->SetDirectXManager(pD3DManager), "Failed to set D3DManager on video sample allocator.");
   CHECK_HR(pVideoSampleAllocator->InitializeSampleAllocator(1, pImfEvrSinkType), "Failed to initialise video sample allocator.");
   CHECK_HR(pVideoSampleAllocator->AllocateSample(&pD3DVideoSample), "Failed to allocate video sample.");
+  CHECK_HR(pD3DVideoSample->GetBufferByIndex(0, &pDstBuffer), "Failed to get destination buffer.");
+  CHECK_HR(pDstBuffer->QueryInterface(IID_PPV_ARGS(&p2DBuffer)), "Failed to get pointer to 2D buffer.");
 
   // Get clocks organised.
   CHECK_HR(MFCreatePresentationClock(&pClock), "Failed to create presentation clock.");
@@ -250,8 +253,7 @@ int main()
 
   // Start the sample read-write loop.
   IMFSample* videoSample = NULL;
-  IMFMediaBuffer* pSrcBuffer = NULL, *pDstBuffer = NULL;
-  IMF2DBuffer* p2DBuffer = NULL;
+  IMFMediaBuffer* pSrcBuffer = NULL;
   BYTE* pbBuffer = NULL;
   DWORD streamIndex, flags;
   LONGLONG llTimeStamp;
@@ -294,11 +296,8 @@ int main()
 
       CHECK_HR(pD3DVideoSample->SetSampleTime(llTimeStamp), "Failed to set D3D video sample time.");
       CHECK_HR(pD3DVideoSample->SetSampleDuration(sampleDuration), "Failed to set D3D video sample duration.");
-
       CHECK_HR(videoSample->ConvertToContiguousBuffer(&pSrcBuffer), "Failed to get buffer from video sample.");
       CHECK_HR(pSrcBuffer->Lock(&pbBuffer, NULL, &dwBuffer), "Failed to lock sample buffer.");
-      CHECK_HR(pD3DVideoSample->GetBufferByIndex(0, &pDstBuffer), "Failed to get destination buffer.");
-      CHECK_HR(pDstBuffer->QueryInterface(IID_PPV_ARGS(&p2DBuffer)), "Failed to get pointer to 2D buffer.");
       CHECK_HR(p2DBuffer->ContiguousCopyFrom(pbBuffer, dwBuffer), "Failed to unlock sample buffer.");
       CHECK_HR(pSrcBuffer->Unlock(), ".\n");
 
@@ -314,8 +313,6 @@ int main()
       Sleep(sampleDuration / 10000); // Duration is given in 10's of nano seconds.
     }
 
-    SAFE_RELEASE(p2DBuffer);
-    SAFE_RELEASE(pDstBuffer);
     SAFE_RELEASE(pSrcBuffer);
     SAFE_RELEASE(videoSample);
   }
@@ -325,6 +322,8 @@ done:
   printf("finished.\n");
   auto c = getchar();
 
+  SAFE_RELEASE(p2DBuffer);
+  SAFE_RELEASE(pDstBuffer);
   SAFE_RELEASE(pVideoReader);
   SAFE_RELEASE(videoSourceOutputType);
   SAFE_RELEASE(pvideoSourceModType);
@@ -332,7 +331,6 @@ done:
   SAFE_RELEASE(pHintMediaType);
   SAFE_RELEASE(pVideoSink);
   SAFE_RELEASE(pStreamSink);
-  SAFE_RELEASE(pSinkWriter);
   SAFE_RELEASE(pSinkMediaTypeHandler);
   SAFE_RELEASE(pSourceMediaTypeHandler);
   SAFE_RELEASE(pSourcePresentationDescriptor);
