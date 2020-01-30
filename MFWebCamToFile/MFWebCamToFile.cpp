@@ -2,11 +2,11 @@
 * Filename: MFWebCamToFile.cpp
 *
 * Description:
-* This file contains a C++ console application that captures the realtime video 
+* This file contains a C++ console application that captures the real-time video 
 * stream from a webcam to an MP4 file.
 *
 * Note: The webcam index and the source reader media output type will need
-* adjustment depending on the the configuration of video devices on the machine
+* adjustment depending on the configuration of video devices on the machine
 * running this sample.
 *
 * Author:
@@ -67,7 +67,7 @@ int main()
 
 	// Get the first available webcam.
 	CHECK_HR(MFCreateAttributes(&videoConfig, 1),
-		"Error creating video configuation.");
+		"Error creating video configuration.");
 
 	// Request video capture devices.
 	CHECK_HR(videoConfig->SetGUID(
@@ -79,7 +79,7 @@ int main()
 		"Error enumerating video devices.");
 
 	CHECK_HR(videoDevices[WEBCAM_DEVICE_INDEX]->GetAllocatedString(MF_DEVSOURCE_ATTRIBUTE_FRIENDLY_NAME, &webcamFriendlyName, &webcamNameLength),
-		"Error retrieving vide device friendly name.");
+		"Error retrieving video device friendly name.");
 
 	wprintf(L"First available webcam: %s\n", webcamFriendlyName);
 
@@ -163,7 +163,7 @@ int main()
 
 		if (videoSample)
 		{
-			// rebase the time stamp
+			// Re-base the time stamp.
 			llVideoTimeStamp -= llVideoBaseTime;
 
 			CHECK_HR(videoSample->SetSampleTime(llVideoTimeStamp), "Set video sample time failed.");
