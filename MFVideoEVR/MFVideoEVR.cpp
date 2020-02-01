@@ -161,7 +161,7 @@ int main()
     "Failed to get file video source.");
 
   CHECK_HR(pVideoReader->SetStreamSelection(MF_SOURCE_READER_ALL_STREAMS, false),
-    "Failed to deselect all streams on video reader.");
+    "Failed to de-select all streams on video reader.");
 
   CHECK_HR(pVideoReader->GetCurrentMediaType((DWORD)MF_SOURCE_READER_FIRST_VIDEO_STREAM, &videoSourceOutputType),
     "Error retrieving current media type from first video stream.");
@@ -272,7 +272,12 @@ int main()
     if (flags & MF_SOURCE_READERF_ENDOFSTREAM)
     {
       printf("End of stream.\n");
-      break;
+
+      PROPVARIANT var = { 0 };
+      var.vt = VT_I8;
+      
+      CHECK_HR(pVideoReader->SetCurrentPosition(GUID_NULL, var),
+        "Failed to set source reader position.");
     }
     if (flags & MF_SOURCE_READERF_STREAMTICK)
     {

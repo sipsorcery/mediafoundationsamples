@@ -53,7 +53,6 @@ int main()
   IMFMediaSource* pVideoSource = NULL, * pAudioSource = NULL;
   IMFMediaSource* pAggSource = NULL;
   IMFCollection* pCollection = NULL;
-  UINT32 videoDeviceCount = 0;
   IMFAttributes* videoConfig = NULL;
   IMFSourceReader* pSourceReader = NULL;
   WCHAR* webcamFriendlyName;
@@ -170,7 +169,7 @@ int main()
   DWORD streamIndex, flags;
   LONGLONG llSampleTimeStamp;
   IMFSample* pSample = NULL;
-  LONGLONG llSampleBaseTime = 0;
+  LONGLONG llVideoBaseTime = 0, llAudioBaseTime = 0;
   int sampleCount = 0;
 
   printf("Recording...\n");
@@ -186,13 +185,28 @@ int main()
       &pSample												// Receives the sample or NULL.
     ), "Error reading sample.");
 
-    if (llSampleBaseTime == 0) {
-      llSampleBaseTime = llSampleTimeStamp;
+    DWORD sinkStmIndex = (streamIndex == srcAudioStreamIndex) ? sinkAudioStreamIndex : sinkVideoStreamIndex;
+
+    if (sinkStmIndex == sinkAudioStreamIndex ) {
+      if (llAudioBaseTime == 0) {
+        llAudioBaseTime = llSampleTimeStamp;
+      }
+      else {
+        // Re-base the time stamp.
+        llSampleTimeStamp -= llAudioBaseTime;
+      }
     }
 
-    DWORD sinkStmIndex = (streamIndex == srcAudioStreamIndex) ? sinkAudioStreamIndex : sinkVideoStreamIndex;
-    // Re-base the time stamp.
-    llSampleTimeStamp -= llSampleBaseTime;
+    if (sinkStmIndex == sinkVideoStreamIndex) {
+      if (llVideoBaseTime == 0) {
+        llVideoBaseTime = llSampleTimeStamp;
+      }
+      else {
+        // Re-base the time stamp.
+        llSampleTimeStamp -= llVideoBaseTime;
+      }
+    }
+
 
    /* if (flags & MF_SOURCE_READERF_STREAMTICK) {
       printf("Stream tick sink stream index %d.\n", sinkStmIndex);
