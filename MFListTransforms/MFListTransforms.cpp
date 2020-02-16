@@ -89,7 +89,7 @@ done:
 * the input media type and the optional output media type.
 * @param[in] pInput: pointer to the MFT input type to match.
 * @param[in] pOutput: Optional. Pointer to the MFT output type to match. If
-                      NULL all MFT's for teh input type will be listed.
+                      NULL all MFT's for the input type will be listed.
 * Remarks:
 * Copied from https://github.com/mvaneerde/blog/blob/develop/mftenum/mftenum/mftenum.cpp.
 */

@@ -2,7 +2,7 @@
 * Filename: MFWebCamRtp.cpp
 *
 * Description:
-* This file contains a C++ console application that captures the realtime video
+* This file contains a C++ console application that captures the real-time video
 * stream from a webcam using Windows Media Foundation, encodes it as H264 and then
 * transmits it to an RTP end point.
 *
@@ -29,7 +29,7 @@
 * History:
 * 07 Sep 2015	Aaron Clauson	Created, Hobart, Australia.
 * 04 Jan 2020	Aaron Clauson	Removed live555 (sledgehammer for a nail for this sample).
-* 10 Jan 2020   Aaron Clauson   Added rudimentary RTP packetisation (suitable for proof of concept only).
+* 10 Jan 2020 Aaron Clauson   Added rudimentary RTP packetisation (suitable for proof of concept only).
 *
 * License: Public Domain (no warranty, use at own risk)
 /******************************************************************************/
@@ -204,7 +204,7 @@ int main()
   CHECK_HR(pMFTInputMediaType->SetGUID(MF_MT_SUBTYPE, MFVideoFormat_IYUV), "Error setting video subtype.");
 
   MFCreateMediaType(&pMFTOutputMediaType);
-  CHECK_HR(pMFTInputMediaType->CopyAllItems(pMFTOutputMediaType), "Error copying media type attributes tfrom mft input type to mft output type.");
+  CHECK_HR(pMFTInputMediaType->CopyAllItems(pMFTOutputMediaType), "Error copying media type attributes from mft input type to mft output type.");
   CHECK_HR(pMFTOutputMediaType->SetGUID(MF_MT_SUBTYPE, MFVideoFormat_H264), "Error setting video sub type.");
   CHECK_HR(pMFTOutputMediaType->SetUINT32(MF_MT_AVG_BITRATE, 240000), "Error setting average bit rate.");
   CHECK_HR(pMFTOutputMediaType->SetUINT32(MF_MT_INTERLACE_MODE, 2), "Error setting interlace mode.");
@@ -212,7 +212,7 @@ int main()
   CHECK_HR(MFSetAttributeRatio(pMFTOutputMediaType, MF_MT_MPEG2_PROFILE, eAVEncH264VProfile_ConstrainedBase, 1), "Failed to set profile on H264 MFT out type.");
   //CHECK_HR(pMFTOutputMediaType->SetDouble(MF_MT_MPEG2_LEVEL, 3.1), "Failed to set level on H264 MFT out type.\n");
   //CHECK_HR(pMFTOutputMediaType->SetUINT32(MF_MT_MAX_KEYFRAME_SPACING, 10), "Failed to set key frame interval on H264 MFT out type.\n");
-  //CHECK_HR(pMFTOutputMediaType->SetUINT32(CODECAPI_AVEncCommonQuality, 100), "Failed to set H264 codec qulaity.\n");
+  //CHECK_HR(pMFTOutputMediaType->SetUINT32(CODECAPI_AVEncCommonQuality, 100), "Failed to set H264 codec quality.\n");
 
   std::cout << "H264 encoder output type: " << GetMediaTypeDescription(pMFTOutputMediaType) << std::endl;
 
