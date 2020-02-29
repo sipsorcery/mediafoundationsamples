@@ -18,7 +18,7 @@
 * 2. Open the mfwebrtc.html file in a browser.
 * 3. Press the Start button on the web page and the webcam feed should appear.
 *
-* Browser Interop (as of 19 Jan 2020):
+* Browser Interop (as of 19 Jan 2020, confirmed on 29 Feb 2020):
 * - Works in Chrome.
 * - Works in Edge Chromium.
 * - Doesn't work in Firefox. Firefox requires a STUN binding request to be sent from the
