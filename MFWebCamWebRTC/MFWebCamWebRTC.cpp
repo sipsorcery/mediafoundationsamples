@@ -2,7 +2,7 @@
 * Filename: MFWebCamWebRTC.cpp
 *
 * Description:
-* This file contains a C++ console application that captures the realtime video
+* This file contains a C++ console application that captures the real-time video
 * stream from a webcam using Windows Media Foundation and streams it to a WebRTC
 * client.
 *
@@ -32,6 +32,7 @@
 *
 * History:
 * 14 Jan 2020	  Aaron Clauson	  Created, Dublin, Ireland.
+* 29 Feb 2020   Aaron Clauson   Fixed failing DTLS handshake logic.
 *
 * License: Public Domain (no warranty, use at own risk)
 /******************************************************************************/
@@ -104,7 +105,7 @@
 class StunMessage;
 HRESULT SendRtpSample(SOCKET socket, sockaddr_in& dst, srtp_t* srtpSession, byte* frameData, size_t frameLength, uint32_t ssrc, uint32_t timestamp, uint16_t* seqNum);
 void krx_ssl_info_callback(const SSL* ssl, int where, int ret);
-int verify_cookie(SSL* ssl, unsigned char* cookie, unsigned int cookie_len);
+int verify_cookie(SSL* ssl, const unsigned char* cookie, unsigned int cookie_len);
 int generate_cookie(SSL* ssl, unsigned char* cookie, unsigned int* cookie_len);
 int StreamWebcam(SOCKET rtpSocket, sockaddr_in& dest, srtp_t* srtpSession);
 void RtpSocketListen(SOCKET rtpSocket);
@@ -484,7 +485,7 @@ int main()
     //------
     // DTLS
     //------
-    ctx = SSL_CTX_new(DTLS_method());	// Copes with DTLS 1.0 and 1.2.
+    ctx = SSL_CTX_new(DTLS_server_method());	// Copes with DTLS 1.0 and 1.2.
     if (!ctx) {
       printf("Error: cannot create SSL_CTX.\n");
       goto done;
@@ -524,21 +525,34 @@ int main()
       goto done;
     }
 
-    SSL_CTX_set_cookie_generate_cb(ctx, generate_cookie);
-    SSL_CTX_set_cookie_verify_cb(ctx, verify_cookie);
+    // Don't need to use a handshake cookie at this point. The DTLS 
+    // handshake does not get initiated until the ICE connection is done
+    // and that serves as the DoS protection.
+    //SSL_CTX_set_cookie_generate_cb(ctx, generate_cookie);
+    //SSL_CTX_set_cookie_verify_cb(ctx, verify_cookie);
     SSL_CTX_set_ecdh_auto(ctx, 1);                        // Needed for FireFox DTLS negotiation.
     SSL_CTX_set_verify(ctx, SSL_VERIFY_NONE, nullptr);    // The client doesn't have to send it's certificate.
 
     // DTLS context now created. Accept new clients and do the handshake.
     bio = BIO_new_dgram(rtpSocket, BIO_NOCLOSE);
+    if (!bio) {
+      printf("Error: BIO_new_dgram failed.\n");
+      goto done;
+    }
+
     ssl = SSL_new(ctx);
+    if (!ssl) {
+      printf("Error: SSL_new failed.\n");
+      goto done;
+    }
+
     SSL_set_bio(ssl, bio, bio);
     SSL_set_info_callback(ssl, krx_ssl_info_callback);    // info callback.
     SSL_set_accept_state(ssl);
 
-    DTLSv1_listen(ssl, &clientAddr);
-
-    printf("New DTLS client connection.\n");
+    //BIO_ADDR* clientBio = BIO_ADDR_new();
+    //DTLSv1_listen(ssl, clientBio);
+    //printf("New DTLS client connection.\n");
 
     // Attempt to complete the DTLS handshake
     // If successful, the DTLS link state is initialized internally
@@ -950,7 +964,7 @@ done:
   return hr;
 }
 
-int verify_cookie(SSL* ssl, unsigned char* cookie, unsigned int cookie_len)
+int verify_cookie(SSL* ssl, const unsigned char* cookie, unsigned int cookie_len)
 {
   // Accept any cookie.
   return 1;
