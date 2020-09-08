@@ -2,6 +2,8 @@
 
 Official samples are available [here](https://github.com/microsoft/Windows-classic-samples/tree/master/Samples/Win7Samples/multimedia/mediafoundation) and a brief overview web page [here](https://docs.microsoft.com/en-us/windows/win32/medfound/media-foundation-sdk-samples).
 
+Update Sep 2020: A new official Media Foundation samples repository has been created at [microsoft/media-foundation](https://github.com/microsoft/media-foundation).
+
 A set of minimal sample applications that demonstrate how to use certain parts of Microsoft's Windows Media Foundation API. The original motivation for these samples was an attempt to find a way to stream audio and video from a webcam, encoded as H264 and/or VP8, over RTP and then render at the remote destination. As of January 2020 the MFWebCamRtp sample has been used to stream H264 samples from a webcam source to ffplay.
 
 ### Rendering
