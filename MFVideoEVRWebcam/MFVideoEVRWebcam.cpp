@@ -113,17 +113,18 @@ int main()
 
   CHECK_HR(ListVideoDevicesWithBriefFormat(), "Error listing video capture devices.");
 
+  // No longer needed due to setting MF_SOURCE_READER_ENABLE_VIDEO_PROCESSING on source reader.
   // Need the color converter DSP for conversions between YUV, RGB etc.
-  CHECK_HR(MFTRegisterLocalByCLSID(
-    __uuidof(CColorConvertDMO),
-    MFT_CATEGORY_VIDEO_PROCESSOR,
-    L"",
-    MFT_ENUM_FLAG_SYNCMFT,
-    0,
-    NULL,
-    0,
-    NULL),
-    "Error registering colour converter DSP.");
+  //CHECK_HR(MFTRegisterLocalByCLSID(
+  //  __uuidof(CColorConvertDMO),
+  //  MFT_CATEGORY_VIDEO_PROCESSOR,
+  //  L"",
+  //  MFT_ENUM_FLAG_SYNCMFT,
+  //  0,
+  //  NULL,
+  //  0,
+  //  NULL),
+  //  "Error registering colour converter DSP.");
 
   // Create a separate Window and thread to host the Video player.
   CreateThread(NULL, 0, (LPTHREAD_START_ROUTINE)InitializeWindow, NULL, 0, NULL);
@@ -185,9 +186,6 @@ int main()
   CHECK_HR(GetVideoSourceFromDevice(WEBCAM_DEVICE_INDEX, &pVideoSource, &pVideoReader),
     "Failed to get webcam video source.");
 
-  //CHECK_HR(pVideoReader->GetCurrentMediaType((DWORD)MF_SOURCE_READER_FIRST_VIDEO_STREAM, &videoSourceOutputType),
-  //  "Error retrieving current media type from first video stream.");
-
   CHECK_HR(pVideoReader->SetStreamSelection((DWORD)MF_SOURCE_READER_FIRST_VIDEO_STREAM, TRUE),
     "Failed to set the first video stream on the source reader.");
 
@@ -203,9 +201,6 @@ int main()
   DWORD srcMediaTypeCount = 0;
   CHECK_HR(pSourceMediaTypeHandler->GetMediaTypeCount(&srcMediaTypeCount),
     "Failed to get source media type count.");
-
-  CHECK_HR(pSourceMediaTypeHandler->GetCurrentMediaType(&pVideoSourceOutputType),
-    "Error retrieving current media type from first video stream.");
 
   // ----- Attempt to set the desired media type on the webcam source reader. -----
 
@@ -226,8 +221,6 @@ int main()
     // If IsMediaTypeSupported did not supply us a new type the typ checked must have been good enough use that.
     CHECK_HR(pSourceMediaTypeHandler->SetCurrentMediaType(pWebcamSourceType), "Failed to set media type on source.");
   }
-
-  //CHECK_HR(pSourceMediaTypeHandler->SetCurrentMediaType(pWebcamSourceType), "Failed to set media type on webcam source.");
 
   CHECK_HR(pSourceMediaTypeHandler->GetCurrentMediaType(&pVideoSourceOutputType),
     "Error retrieving current media type from first video stream.");
