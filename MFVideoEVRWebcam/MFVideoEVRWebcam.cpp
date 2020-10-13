@@ -202,7 +202,7 @@ int main()
   CHECK_HR(pSourceMediaTypeHandler->GetMediaTypeCount(&srcMediaTypeCount),
     "Failed to get source media type count.");
 
-  // ----- Attempt to set the desired media type on the webcam source reader. -----
+  // ----- Attempt to set the desired media type on the webcam source. -----
 
   CHECK_HR(MFCreateMediaType(&pWebcamSourceType), "Failed to create webcam output media type.");
 
