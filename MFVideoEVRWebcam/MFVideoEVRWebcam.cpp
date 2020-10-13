@@ -207,10 +207,6 @@ int main()
   CHECK_HR(pSourceMediaTypeHandler->GetCurrentMediaType(&pVideoSourceOutputType),
     "Error retrieving current media type from first video stream.");
 
-  //std::cout << "Source media type count: " << srcMediaTypeCount << ", is first stream selected " << fSelected << "." << std::endl;
-  //std::cout << "Default output media type for source reader:" << std::endl;
-  //std::cout << GetMediaTypeDescription(pVideoSourceOutputType) << std::endl << std::endl;
-
   // ----- Attempt to set the desired media type on the webcam source reader. -----
 
   CHECK_HR(MFCreateMediaType(&pWebcamSourceType), "Failed to create webcam output media type.");
@@ -218,33 +214,26 @@ int main()
   CHECK_HR(FindMatchingVideoType(pSourceMediaTypeHandler, WEBCAM_PIXEL_FORMAT, VIDEO_WIDTH, VIDEO_HEIGHT, VIDEO_FRAME_RATE, pWebcamSourceType),
     "No matching webcam media type was found.");
 
-  std::cout << "Requested webcam media type found:" << std::endl;
-  std::cout << GetMediaTypeDescription(pWebcamSourceType) << std::endl << std::endl;
+  // This check is not necessary if the media type was from the list of supported types.
+  // It is useful if the media type is constructed manually. It is left here for demonstration purposes. 
+  CHECK_HR(pSourceMediaTypeHandler->IsMediaTypeSupported(pWebcamSourceType, &pWebCamMatchingType), "Webcam does not support requested options.");
 
-  // USe the currently selected media type as a basis and then adjust the desired properties.
-  /*CHECK_HR(pVideoSourceOutputType->CopyAllItems(pWebcamSourceType), "Error copying media type attributes from current source to webcam output media type.");
-  CHECK_HR(pWebcamSourceType->SetGUID(MF_MT_SUBTYPE, WEBCAM_PIXEL_FORMAT), "Failed to set video sub-type attribute on the webcam media type.");
-  CHECK_HR(MFSetAttributeSize(pWebcamSourceType, MF_MT_FRAME_SIZE, VIDEO_WIDTH, VIDEO_HEIGHT), "Failed to set the frame size attribute on media type.");
-  CHECK_HR(MFSetAttributeSize(pWebcamSourceType, MF_MT_FRAME_RATE, VIDEO_FRAME_RATE, 1), "Failed to set the frame rate attribute on media type.");*/
+  if (pWebCamMatchingType != NULL) {
+    // If IsMediaTypeSupported supplied us with the closest matching media type use that.
+    CHECK_HR(pSourceMediaTypeHandler->SetCurrentMediaType(pWebCamMatchingType), "Failed to set media type on source.");
+  }
+  else {
+    // If IsMediaTypeSupported did not supply us a new type the typ checked must have been good enough use that.
+    CHECK_HR(pSourceMediaTypeHandler->SetCurrentMediaType(pWebcamSourceType), "Failed to set media type on source.");
+  }
 
-  //CHECK_HR(pSourceMediaTypeHandler->IsMediaTypeSupported(pWebcamSourceType, &pWebCamMatchingType), "Webcam does not support requested options.");
+  //CHECK_HR(pSourceMediaTypeHandler->SetCurrentMediaType(pWebcamSourceType), "Failed to set media type on webcam source.");
 
-  //if (pWebCamMatchingType != NULL) {
-  //  // If IsMediaTypeSupported supplied us with the closest matching media type use that.
-  //  CHECK_HR(pSourceMediaTypeHandler->SetCurrentMediaType(pWebCamMatchingType), "Failed to set media type on source.");
-  //}
-  //else {
-  //  // If IsMediaTypeSupported did not supply us a new type the typ checked must have been good enough use that.
-  //  CHECK_HR(pSourceMediaTypeHandler->SetCurrentMediaType(pWebcamSourceType), "Failed to set media type on source.");
-  //}
-
-  CHECK_HR(pSourceMediaTypeHandler->SetCurrentMediaType(pWebcamSourceType), "Failed to set media type on webcam source.");
-
-  /*CHECK_HR(pSourceMediaTypeHandler->GetCurrentMediaType(&pVideoSourceOutputType),
+  CHECK_HR(pSourceMediaTypeHandler->GetCurrentMediaType(&pVideoSourceOutputType),
     "Error retrieving current media type from first video stream.");
 
   std::cout << "Webcam media type:" << std::endl;
-  std::cout << GetMediaTypeDescription(pVideoSourceOutputType) << std::endl << std::endl;*/
+  std::cout << GetMediaTypeDescription(pVideoSourceOutputType) << std::endl << std::endl;
 
   // ----- Set the video input type on the EVR sink.
 
@@ -265,10 +254,11 @@ int main()
 
   CHECK_HR(MFCreateMediaType(&pSourceReaderType), "Failed to source reader media type.");
   CHECK_HR(pImfEvrSinkType->CopyAllItems(pSourceReaderType), "Error copying media type attributes from EVR input to source reader media type.");
-  ////CHECK_HR(MFSetAttributeSize(pWebcamSourceType, MF_MT_FRAME_RATE, VIDEO_FRAME_RATE, 1), "Failed to set the frame rate attribute on webcam media type.");
 
-  ////CHECK_HR(pSourceMediaTypeHandler->SetCurrentMediaType(pWebcamSourceType), "Failed to set media type on webcam source.");
-
+  // VERY IMPORTANT: Set the media type on the source reader to match the media type on the EVR. The
+  // reader will do it's best to translate between the media type set on the webcam and the input type to the EVR.
+  // If an error occurs copying the sample in the read-loop then it's usually because the reader could not translate
+  // the types.
   CHECK_HR(pVideoReader->SetCurrentMediaType((DWORD)MF_SOURCE_READER_FIRST_VIDEO_STREAM, NULL, pSourceReaderType),
     "Failed to set output media type on webcam source reader.");
 
