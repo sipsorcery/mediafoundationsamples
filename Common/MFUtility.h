@@ -399,6 +399,70 @@ done:
   return description;
 }
 
+/**
+* Helper function to get a user friendly description for a media type.
+* Note that there may be properties missing or incorrectly described.
+* @param[in] pMediaType: pointer to the video media type to get a description for.
+* @@Returns A string describing the media type.
+*
+* Potential improvements https://docs.microsoft.com/en-us/windows/win32/medfound/media-type-debugging-code.
+*/
+std::string GetVideoTypeDescriptionBrief(IMFMediaType* pMediaType)
+{
+  std::string description = " ";
+  GUID subType;
+  UINT32 width = 0, height = 0, fpsNum = 0, fpsDen = 0;
+
+  if (pMediaType == NULL) {
+    description = " <NULL>";
+  }
+  else {
+    CHECK_HR(pMediaType->GetGUID(MF_MT_SUBTYPE, &subType), "Failed to get video sub type.");
+    CHECK_HR(MFGetAttributeSize(pMediaType, MF_MT_FRAME_SIZE, &width, &height), "Failed to get MF_MT_FRAME_SIZE attribute.");
+    CHECK_HR(MFGetAttributeRatio(pMediaType, MF_MT_FRAME_RATE, &fpsNum, &fpsDen), "Failed to get MF_MT_FRAME_RATE attribute.");
+
+    description += GetGUIDNameConst(subType);
+    description += ", " + std::to_string(width) + "x" + std::to_string(height) + ", " + std::to_string(fpsNum) + "/" + std::to_string(fpsDen) + "fps";
+  }
+
+done:
+
+  return description;
+}
+
+HRESULT FindMatchingVideoType(IMFMediaTypeHandler* pMediaTypeHandler, const GUID& pixelFormat, uint32_t width, uint32_t height, uint32_t fps, IMFMediaType* pOutMediaType)
+{
+  HRESULT hr = S_FALSE;
+  DWORD mediaTypeCount = 0;
+  GUID subType;
+  UINT32 w = 0, h = 0, fpsNum = 0, fpsDen = 0;
+
+  CHECK_HR(pMediaTypeHandler->GetMediaTypeCount(&mediaTypeCount),
+    "Failed to get sink media type count.");
+
+  for (int i = 0; i < mediaTypeCount; i++) {
+    IMFMediaType* pMediaType = NULL;
+    CHECK_HR(pMediaTypeHandler->GetMediaTypeByIndex(i, &pMediaType), "Failed to get media type.");
+
+    CHECK_HR(pMediaType->GetGUID(MF_MT_SUBTYPE, &subType), "Failed to get video sub type.");
+    CHECK_HR(MFGetAttributeSize(pMediaType, MF_MT_FRAME_SIZE, &w, &h), "Failed to get MF_MT_FRAME_SIZE attribute.");
+    CHECK_HR(MFGetAttributeRatio(pMediaType, MF_MT_FRAME_RATE, &fpsNum, &fpsDen), "Failed to get MF_MT_FRAME_RATE attribute.");
+
+    if(IsEqualGUID(pixelFormat, subType) && w == width && h == height && fps == fpsNum && fpsDen == 1) {
+      CHECK_HR(pMediaType->CopyAllItems(pOutMediaType), "Error copying media type attributes.");
+      SAFE_RELEASE(pMediaType);
+      hr = S_OK;
+      break;
+    }
+    else {
+      SAFE_RELEASE(pMediaType);
+    }
+  }
+
+done:
+  return hr;
+}
+
 /*
 Lists all the available media types attached to a media type handler.
 The media type handler can be acquired from a source reader or sink writer.
@@ -435,7 +499,7 @@ done:
 * List all the media modes available on a media source.
 * @param[in] pReader: pointer to the media source reader to list the media types for.
 */
-void ListModes(IMFSourceReader* pReader)
+void ListModes(IMFSourceReader* pReader, bool brief = false)
 {
   HRESULT hr = NULL;
   DWORD dwMediaTypeIndex = 0;
@@ -451,8 +515,12 @@ void ListModes(IMFSourceReader* pReader)
     }
     else if (SUCCEEDED(hr))
     {
-      // Examine the media type. (Not shown.)
-      std::cout << GetMediaTypeDescription(pType) << std::endl;
+      if (!brief) {
+        std::cout << GetMediaTypeDescription(pType) << std::endl;
+      }
+      else {
+        std::cout << GetVideoTypeDescriptionBrief(pType) << std::endl;
+      }
 
       pType->Release();
     }
@@ -521,6 +589,73 @@ HRESULT ListCaptureDevices(DeviceType deviceType)
     CHECK_HR(hr, "Error creating device source reader.");
 
     ListModes(pSourceReader);
+
+    CoTaskMemFree(friendlyName);
+    SAFE_RELEASE(pMediaSource);
+    SAFE_RELEASE(pSourceReader);
+  }
+
+done:
+
+  SAFE_RELEASE(pDeviceAttributes);
+  CoTaskMemFree(ppDevices);
+
+  return hr;
+}
+
+/**
+* Prints out a list of the audio or video capture devices available along with
+* a brief description of the most important format properties.
+* @param[in] deviceType: whether to list audio or video capture devices.
+* @@Returns S_OK if successful or an error code if not.
+*
+* Remarks:
+* See https://docs.microsoft.com/en-us/windows/win32/coreaudio/device-properties.
+*/
+HRESULT ListVideoDevicesWithBriefFormat()
+{
+  IMFAttributes* pDeviceAttributes = NULL;
+  IMFActivate** ppDevices = NULL;
+  UINT32 deviceCount = 0;
+
+  HRESULT hr = S_OK;
+
+  hr = MFCreateAttributes(&pDeviceAttributes, 1);
+  CHECK_HR(hr, "Error creating device attributes.");
+
+    // Request video capture devices.
+    hr = pDeviceAttributes->SetGUID(
+      MF_DEVSOURCE_ATTRIBUTE_SOURCE_TYPE,
+      MF_DEVSOURCE_ATTRIBUTE_SOURCE_TYPE_VIDCAP_GUID);
+    CHECK_HR(hr, "Error initialising video configuration object.");
+
+  hr = MFEnumDeviceSources(pDeviceAttributes, &ppDevices, &deviceCount);
+  CHECK_HR(hr, "Error enumerating devices.");
+
+  wprintf(L"Device count %d.\n", deviceCount);
+
+  for (UINT i = 0; i < deviceCount; i++) {
+
+    LPWSTR friendlyName = NULL;
+    UINT32 friendlyNameLength = 0;
+    IMFMediaSource* pMediaSource = NULL;
+    IMFSourceReader* pSourceReader = NULL;
+
+    hr = ppDevices[i]->GetAllocatedString(MF_DEVSOURCE_ATTRIBUTE_FRIENDLY_NAME, &friendlyName, &friendlyNameLength);
+    CHECK_HR(hr, "Error retrieving device friendly name.");
+
+    wprintf(L"Device name: %s\n", friendlyName);
+
+    hr = ppDevices[i]->ActivateObject(IID_PPV_ARGS(&pMediaSource));
+    CHECK_HR(hr, "Error activating device media source.");
+
+    hr = MFCreateSourceReaderFromMediaSource(
+      pMediaSource,
+      NULL,
+      &pSourceReader);
+    CHECK_HR(hr, "Error creating device source reader.");
+
+    ListModes(pSourceReader, true);
 
     CoTaskMemFree(friendlyName);
     SAFE_RELEASE(pMediaSource);
@@ -703,7 +838,7 @@ HRESULT GetVideoSourceFromDevice(UINT nDevice, IMFMediaSource** ppVideoSource, I
     hr = videoDevices[nDevice]->GetAllocatedString(MF_DEVSOURCE_ATTRIBUTE_FRIENDLY_NAME, &webcamFriendlyName, &nameLength);
     CHECK_HR(hr, "Error retrieving video device friendly name.\n");
 
-    wprintf(L"First available webcam: %s\n", webcamFriendlyName);
+    wprintf(L"Using webcam: %s\n", webcamFriendlyName);
 
     hr = videoDevices[nDevice]->ActivateObject(IID_PPV_ARGS(ppVideoSource));
     CHECK_HR(hr, "Error activating video device.");

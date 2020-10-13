@@ -3,7 +3,7 @@
 *
 * Description:
 * This file contains a C++ console application that is attempting to play the
-* video stream from a webcam soruce using the Windows Media Foundation
+* video stream from a webcam source using the Windows Media Foundation
 * API. Specifically it's attempting to use the Enhanced Video Renderer
 * (https://msdn.microsoft.com/en-us/library/windows/desktop/ms694916%28v=vs.85%29.aspx)
 * to playback the video.
@@ -58,7 +58,13 @@
 
 #define VIDEO_WIDTH  640
 #define VIDEO_HEIGHT 480
-#define VIDEO_FRAME_RATE 30
+#define VIDEO_FRAME_RATE 5
+#define WEBCAM_PIXEL_FORMAT MFVideoFormat_RGB24
+//#define WEBCAM_PIXEL_FORMAT MFVideoFormat_YUY2
+#define RENDERER_PIXEL_FORMAT MFVideoFormat_RGB32
+//#define PIXEL_FORMAT MFVideoFormat_RGB32
+//#define PIXEL_FORMAT MFVideoFormat_YUY2
+//#define PIXEL_FORMAT MFVideoFormat_I420
 #define WEBCAM_DEVICE_INDEX 0	  // Adjust according to desired video capture device.
 
 // Forward function definitions.
@@ -75,7 +81,7 @@ int main()
 {
   IMFMediaSource* pVideoSource = NULL;
   IMFSourceReader* pVideoReader = NULL;
-  IMFMediaType* videoSourceOutputType = NULL, * pvideoSourceModType = NULL, * pWebcamSourceType = NULL;
+  IMFMediaType* pVideoSourceOutputType = NULL, * pWebCamMatchingType = NULL, * pWebcamSourceType = NULL, *pSourceReaderType = NULL;
   IMFMediaType* pImfEvrSinkType = NULL;
   IMFMediaType* pHintMediaType = NULL;
   IMFMediaSink* pVideoSink = NULL;
@@ -102,20 +108,22 @@ int main()
   CHECK_HR(MFStartup(MF_VERSION),
     "Media Foundation initialisation failed.");
 
-  /*CHECK_HR(ListCaptureDevices(DeviceType::Video),
-    "Error listing video capture devices.");*/
+  //CHECK_HR(ListCaptureDevices(DeviceType::Video),
+  //  "Error listing video capture devices.");
 
-    // Need the color converter DSP for conversions between YUV, RGB etc.
-  //CHECK_HR(MFTRegisterLocalByCLSID(
-  //  __uuidof(CColorConvertDMO),
-  //  MFT_CATEGORY_VIDEO_PROCESSOR,
-  //  L"",
-  //  MFT_ENUM_FLAG_SYNCMFT,
-  //  0,
-  //  NULL,
-  //  0,
-  //  NULL),
-  //  "Error registering colour converter DSP.");
+  CHECK_HR(ListVideoDevicesWithBriefFormat(), "Error listing video capture devices.");
+
+  // Need the color converter DSP for conversions between YUV, RGB etc.
+  CHECK_HR(MFTRegisterLocalByCLSID(
+    __uuidof(CColorConvertDMO),
+    MFT_CATEGORY_VIDEO_PROCESSOR,
+    L"",
+    MFT_ENUM_FLAG_SYNCMFT,
+    0,
+    NULL,
+    0,
+    NULL),
+    "Error registering colour converter DSP.");
 
   // Create a separate Window and thread to host the Video player.
   CreateThread(NULL, 0, (LPTHREAD_START_ROUTINE)InitializeWindow, NULL, 0, NULL);
@@ -177,8 +185,8 @@ int main()
   CHECK_HR(GetVideoSourceFromDevice(WEBCAM_DEVICE_INDEX, &pVideoSource, &pVideoReader),
     "Failed to get webcam video source.");
 
-  CHECK_HR(pVideoReader->GetCurrentMediaType((DWORD)MF_SOURCE_READER_FIRST_VIDEO_STREAM, &videoSourceOutputType),
-    "Error retrieving current media type from first video stream.");
+  //CHECK_HR(pVideoReader->GetCurrentMediaType((DWORD)MF_SOURCE_READER_FIRST_VIDEO_STREAM, &videoSourceOutputType),
+  //  "Error retrieving current media type from first video stream.");
 
   CHECK_HR(pVideoReader->SetStreamSelection((DWORD)MF_SOURCE_READER_FIRST_VIDEO_STREAM, TRUE),
     "Failed to set the first video stream on the source reader.");
@@ -196,36 +204,73 @@ int main()
   CHECK_HR(pSourceMediaTypeHandler->GetMediaTypeCount(&srcMediaTypeCount),
     "Failed to get source media type count.");
 
-  std::cout << "Source media type count: " << srcMediaTypeCount << ", is first stream selected " << fSelected << "." << std::endl;
-  std::cout << "Default output media type for source reader:" << std::endl;
-  std::cout << GetMediaTypeDescription(videoSourceOutputType) << std::endl << std::endl;
+  CHECK_HR(pSourceMediaTypeHandler->GetCurrentMediaType(&pVideoSourceOutputType),
+    "Error retrieving current media type from first video stream.");
 
-  // ----- Create a compatible media type and set on the source and sink. -----
+  //std::cout << "Source media type count: " << srcMediaTypeCount << ", is first stream selected " << fSelected << "." << std::endl;
+  //std::cout << "Default output media type for source reader:" << std::endl;
+  //std::cout << GetMediaTypeDescription(pVideoSourceOutputType) << std::endl << std::endl;
 
-  // Set the video input type on the EVR sink.
+  // ----- Attempt to set the desired media type on the webcam source reader. -----
+
+  CHECK_HR(MFCreateMediaType(&pWebcamSourceType), "Failed to create webcam output media type.");
+
+  CHECK_HR(FindMatchingVideoType(pSourceMediaTypeHandler, WEBCAM_PIXEL_FORMAT, VIDEO_WIDTH, VIDEO_HEIGHT, VIDEO_FRAME_RATE, pWebcamSourceType),
+    "No matching webcam media type was found.");
+
+  std::cout << "Requested webcam media type found:" << std::endl;
+  std::cout << GetMediaTypeDescription(pWebcamSourceType) << std::endl << std::endl;
+
+  // USe the currently selected media type as a basis and then adjust the desired properties.
+  /*CHECK_HR(pVideoSourceOutputType->CopyAllItems(pWebcamSourceType), "Error copying media type attributes from current source to webcam output media type.");
+  CHECK_HR(pWebcamSourceType->SetGUID(MF_MT_SUBTYPE, WEBCAM_PIXEL_FORMAT), "Failed to set video sub-type attribute on the webcam media type.");
+  CHECK_HR(MFSetAttributeSize(pWebcamSourceType, MF_MT_FRAME_SIZE, VIDEO_WIDTH, VIDEO_HEIGHT), "Failed to set the frame size attribute on media type.");
+  CHECK_HR(MFSetAttributeSize(pWebcamSourceType, MF_MT_FRAME_RATE, VIDEO_FRAME_RATE, 1), "Failed to set the frame rate attribute on media type.");*/
+
+  //CHECK_HR(pSourceMediaTypeHandler->IsMediaTypeSupported(pWebcamSourceType, &pWebCamMatchingType), "Webcam does not support requested options.");
+
+  //if (pWebCamMatchingType != NULL) {
+  //  // If IsMediaTypeSupported supplied us with the closest matching media type use that.
+  //  CHECK_HR(pSourceMediaTypeHandler->SetCurrentMediaType(pWebCamMatchingType), "Failed to set media type on source.");
+  //}
+  //else {
+  //  // If IsMediaTypeSupported did not supply us a new type the typ checked must have been good enough use that.
+  //  CHECK_HR(pSourceMediaTypeHandler->SetCurrentMediaType(pWebcamSourceType), "Failed to set media type on source.");
+  //}
+
+  CHECK_HR(pSourceMediaTypeHandler->SetCurrentMediaType(pWebcamSourceType), "Failed to set media type on webcam source.");
+
+  /*CHECK_HR(pSourceMediaTypeHandler->GetCurrentMediaType(&pVideoSourceOutputType),
+    "Error retrieving current media type from first video stream.");
+
+  std::cout << "Webcam media type:" << std::endl;
+  std::cout << GetMediaTypeDescription(pVideoSourceOutputType) << std::endl << std::endl;*/
+
+  // ----- Set the video input type on the EVR sink.
+
   CHECK_HR(MFCreateMediaType(&pImfEvrSinkType), "Failed to create video output media type.");
   CHECK_HR(pImfEvrSinkType->SetGUID(MF_MT_MAJOR_TYPE, MFMediaType_Video), "Failed to set video output media major type.");
-  CHECK_HR(pImfEvrSinkType->SetGUID(MF_MT_SUBTYPE, MFVideoFormat_RGB32), "Failed to set video sub-type attribute on media type.");
+  CHECK_HR(pImfEvrSinkType->SetGUID(MF_MT_SUBTYPE, RENDERER_PIXEL_FORMAT), "Failed to set video sub-type attribute on media type.");
   CHECK_HR(pImfEvrSinkType->SetUINT32(MF_MT_INTERLACE_MODE, MFVideoInterlace_Progressive), "Failed to set interlace mode attribute on media type.");
   CHECK_HR(pImfEvrSinkType->SetUINT32(MF_MT_ALL_SAMPLES_INDEPENDENT, TRUE), "Failed to set independent samples attribute on media type.");
   CHECK_HR(MFSetAttributeRatio(pImfEvrSinkType, MF_MT_PIXEL_ASPECT_RATIO, 1, 1), "Failed to set pixel aspect ratio attribute on media type.");
   CHECK_HR(MFSetAttributeSize(pImfEvrSinkType, MF_MT_FRAME_SIZE, VIDEO_WIDTH, VIDEO_HEIGHT), "Failed to set the frame size attribute on media type.");
   CHECK_HR(MFSetAttributeSize(pImfEvrSinkType, MF_MT_FRAME_RATE, VIDEO_FRAME_RATE, 1), "Failed to set the frame rate attribute on media type.");
-  //CHECK_HR(CopyAttribute(videoSourceOutputType, pImfEvrSinkType, MF_MT_DEFAULT_STRIDE), "Failed to copy default stride attribute.");
-
-  // My webcam supports the same media type as the EVR input type except for the pixel format.
-  CHECK_HR(MFCreateMediaType(&pWebcamSourceType), "Failed to create webcam output media type.");
-  CHECK_HR(pImfEvrSinkType->CopyAllItems(pWebcamSourceType), "Error copying media type attributes from EVR input to webcam output media type.");
-  //CHECK_HR(CopyAttribute(videoSourceOutputType, pWebcamSourceType, MF_MT_SUBTYPE), "Failed to set video sub-type attribute on webcam media type.");
 
   CHECK_HR(pSinkMediaTypeHandler->SetCurrentMediaType(pImfEvrSinkType),
-    "Failed to set input media type on EVR sink.");
+   "Failed to set input media type on EVR sink.");
 
-  CHECK_HR(pVideoReader->SetCurrentMediaType((DWORD)MF_SOURCE_READER_FIRST_VIDEO_STREAM, NULL, pWebcamSourceType),
-    "Failed to set output media type on source reader.");
-
-  std::cout << "EVR input media type defined as:" << std::endl;
+  std::cout << "EVR input media:" << std::endl;
   std::cout << GetMediaTypeDescription(pImfEvrSinkType) << std::endl << std::endl;
+
+  CHECK_HR(MFCreateMediaType(&pSourceReaderType), "Failed to source reader media type.");
+  CHECK_HR(pImfEvrSinkType->CopyAllItems(pSourceReaderType), "Error copying media type attributes from EVR input to source reader media type.");
+  ////CHECK_HR(MFSetAttributeSize(pWebcamSourceType, MF_MT_FRAME_RATE, VIDEO_FRAME_RATE, 1), "Failed to set the frame rate attribute on webcam media type.");
+
+  ////CHECK_HR(pSourceMediaTypeHandler->SetCurrentMediaType(pWebcamSourceType), "Failed to set media type on webcam source.");
+
+  CHECK_HR(pVideoReader->SetCurrentMediaType((DWORD)MF_SOURCE_READER_FIRST_VIDEO_STREAM, NULL, pSourceReaderType),
+    "Failed to set output media type on webcam source reader.");
 
   // ----- Source and sink now configured. Set up remaining infrastructure and then start sampling. -----
 
@@ -253,6 +298,7 @@ int main()
   LONGLONG llTimeStamp;
   UINT32 uiAttribute = 0;
   DWORD dwBuffer = 0;
+  DWORD d2dBufferLen = 0;
 
   LONGLONG evrTimestamp = 0;
 
@@ -291,27 +337,27 @@ int main()
       CHECK_HR(pVideoSample->SetSampleTime(llTimeStamp), "Error setting the video sample time.");
       CHECK_HR(pVideoSample->GetSampleDuration(&sampleDuration), "Failed to get video sample duration.");
 
-      //printf("Attempting to convert sample, sample duration %llu, sample time %llu, evr timestamp %llu.\n", sampleDuration, llTimeStamp, evrTimestamp);
+      printf("Attempting to convert sample, sample duration %llu, sample time %llu, evr timestamp %llu.\n", sampleDuration, llTimeStamp, evrTimestamp);
 
       // Relies on the webcam pixel format being RGB24.
       //CreateBitmapFromSample(L"capture_premft.bmp", VIDEO_WIDTH, VIDEO_HEIGHT, 24, videoSample);
 
       // ----- Make Direct3D sample. -----
       IMFMediaBuffer* buf = NULL;
-      DWORD bufLength = 0, pByteBufLength = 0;
+      DWORD bufLength = 0, lockedBufLength = 0;
       BYTE* pByteBuf = NULL;
 
       CHECK_HR(pVideoSample->ConvertToContiguousBuffer(&buf), "ConvertToContiguousBuffer failed.");
       CHECK_HR(buf->GetCurrentLength(&bufLength), "Get buffer length failed.");
-      CHECK_HR(buf->Lock(&pByteBuf, NULL, &pByteBufLength), "Failed to lock sample buffer.");
-      CHECK_HR(buf->Unlock(), "Failed to unlock source buffer.");
+      CHECK_HR(buf->Lock(&pByteBuf, NULL, &lockedBufLength), "Failed to lock sample buffer.");
 
-      //CHECK_HR(pD3DVideoSample->SetSampleTime(llTimeStamp), "Failed to set D3D video sample time.");
       CHECK_HR(pD3DVideoSample->SetSampleTime(evrTimestamp), "Failed to set D3D video sample time.");
       CHECK_HR(pD3DVideoSample->SetSampleDuration(sampleDuration), "Failed to set D3D video sample duration.");
       CHECK_HR(pD3DVideoSample->GetBufferByIndex(0, &pDstBuffer), "Failed to get destination buffer.");
       CHECK_HR(pDstBuffer->QueryInterface(IID_PPV_ARGS(&p2DBuffer)), "Failed to get pointer to 2D buffer.");
-      CHECK_HR(p2DBuffer->ContiguousCopyFrom(pByteBuf, pByteBufLength), "Failed to copy D2D buffer (check the source media type matches the EVR input type).");
+      CHECK_HR(p2DBuffer->ContiguousCopyFrom(pByteBuf, bufLength), "Failed to copy D2D buffer (check the source media type matches the EVR input type).");
+
+      CHECK_HR(buf->Unlock(), "Failed to unlock source buffer.");
 
       //CHECK_HR(videoSample->GetUINT32(MFSampleExtension_FrameCorruption, &uiAttribute), "Failed to get frame corruption attribute.");
       //CHECK_HR(pD3DVideoSample->SetUINT32(MFSampleExtension_FrameCorruption, uiAttribute), "Failed to set frame corruption attribute.");
@@ -338,8 +384,9 @@ done:
   auto c = getchar();
 
   SAFE_RELEASE(pVideoReader);
-  SAFE_RELEASE(videoSourceOutputType);
-  SAFE_RELEASE(pvideoSourceModType);
+  SAFE_RELEASE(pVideoSourceOutputType);
+  SAFE_RELEASE(pSourceReaderType);
+  SAFE_RELEASE(pWebCamMatchingType);
   SAFE_RELEASE(pImfEvrSinkType);
   SAFE_RELEASE(pHintMediaType);
   SAFE_RELEASE(pVideoSink);
