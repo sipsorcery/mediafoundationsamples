@@ -3,7 +3,7 @@
 *
 * Description:
 * This file contains a C++ console application that is attempting to write raw
-* bitmaps to the the Enhanced Video Renderer
+* bitmaps to the Enhanced Video Renderer
 * (https://msdn.microsoft.com/en-us/library/windows/desktop/ms694916%28v=vs.85%29.aspx).
 * This simulates receiving a serialised video stream (such as one packaged and
 * transmitted with RTP packets) and displaying it on with the EVR.
