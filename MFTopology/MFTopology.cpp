@@ -17,11 +17,11 @@
 * Aaron Clauson (aaron@sipsorcery.com)
 *
 * History:
-* 01 Jan 2015	  Aaron Clauson	  Created, Hobart, Australia.
+* 01 Jan 2015	Aaron Clauson	Created, Hobart, Australia.
 * 17 Sep 2015   Aaron Clauson   Added the video playback option in addition to the 
 *                               audio one. Can only get one at a time working so far.
-* 22 Jan 2020		Aaron Clauson		Added separate topology nodes for audio and video.
-*																Simultaneous audio & video playback now working.
+* 22 Jan 2020	Aaron Clauson	Added separate topology nodes for audio and video.
+*				Simultaneous audio & video playback now working.
 *
 * License: Public Domain (no warranty, use at own risk)
 /******************************************************************************/
